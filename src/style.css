@@ -45,17 +45,17 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   display: grid;
   place-items: center;
   color: #fff;
-  /* thin dark halo keeps the icon readable on any photo */
-  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 5px rgba(0, 0, 0, 0.35));
+  transition: opacity 0.25s;
 }
+/* Icons hide while scrolling down and return on any scroll up (see app.js). */
+html.icons-hidden .corner:not(:focus-visible) { opacity: 0; pointer-events: none; }
 .corner-left { left: max(0.6rem, env(safe-area-inset-left)); }
 .corner-right { right: max(0.6rem, env(safe-area-inset-right)); }
 .corner svg { width: var(--icon); height: var(--icon); }
 
-.page .corner {
-  color: var(--ink);
-  filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 4px #fff);
-}
+/* Inner pages have a white background: "difference" keeps the icon white
+   over the cover photo and turns it black over the page. */
+.page .corner { mix-blend-mode: difference; }
 
 html[data-mode="full"] .icon-expand,
 html[data-mode="grid"] .icon-grid { display: none; }

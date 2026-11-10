@@ -18,6 +18,35 @@
   });
 
   /* ------------------------------------------------------------------
+     Corner icons: hidden while scrolling down, shown again on any scroll
+     up, even a small one. "rest" tells whether a position is one where
+     the view can settle, so the snap back after a short upward drag in
+     full screen mode does not hide the icons again.
+     ------------------------------------------------------------------ */
+  var HIDE_AFTER = 12; // pixels scrolled down before the icons hide
+
+  var autoHide = function (target, getTop, rest) {
+    var last = Math.max(0, getTop());
+    var anchor = last;
+    var timer;
+    var set = function (hidden) { root.classList.toggle('icons-hidden', hidden); };
+    target.addEventListener('scroll', function () {
+      var top = Math.max(0, getTop());
+      if (top <= 0 || top < last - 1) set(false);
+      else if (top > anchor + HIDE_AFTER) set(true);
+      last = top;
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        if (!rest || rest(last)) anchor = last;
+      }, 160);
+    }, { passive: true });
+    return function () { // call after a programmatic jump
+      last = anchor = Math.max(0, getTop());
+      set(false);
+    };
+  };
+
+  /* ------------------------------------------------------------------
      Home: full screen <-> grid
      ------------------------------------------------------------------ */
   var feed = document.getElementById('feed');
@@ -35,8 +64,15 @@
       return 0;
     };
 
+    var showIcons = autoHide(feed, function () { return feed.scrollTop; }, function (top) {
+      if (root.dataset.mode !== 'full') return true;
+      var height = feed.clientHeight || 1;
+      return Math.abs(top - Math.round(top / height) * height) < 2; // resting on a photo
+    });
+
     var goTo = function (index) {
       if (items[index]) feed.scrollTop = items[index].offsetTop;
+      showIcons();
     };
 
     var label = function () {
@@ -82,6 +118,8 @@
     restore();
     window.addEventListener('pageshow', function (event) { if (event.persisted) restore(); });
     label();
+  } else {
+    autoHide(window, function () { return window.scrollY; });
   }
 
   /* ------------------------------------------------------------------
