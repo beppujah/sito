@@ -38,6 +38,12 @@ Set `youtube.channelId` in `js/config.js` to list the channel's latest uploads
 automatically, and/or add hand-picked videos to `youtube.videos`. On any page,
 `<div class="yt" data-id="VIDEO_ID" data-title="Title"></div>` embeds a video.
 
+## Cache
+
+Browsers keep the CSS and JS files for a while. Every file is loaded with a
+version suffix (`?v=4`): after changing CSS or JS, raise that number in
+`index.html` and `projects/*.html` so visitors get the new files at once.
+
 ## Run locally
 
 ```sh
