@@ -1,40 +1,16 @@
 /*
- * main.js — wires the page together: scroll progress, tree labels, hero fade.
+ * main.js — home page: scroll progress and the clickable buttons on the tree.
  */
 (function () {
   var cfg = window.SITE_CONFIG;
   var root = document.documentElement;
   var stage = document.getElementById("stage");
   var view = document.getElementById("view");
-  var canvas = document.getElementById("tree");
   var labels = document.getElementById("labels");
-  var hero = document.getElementById("hero");
   var hint = document.getElementById("hint");
-  var spec = document.getElementById("spec");
 
   var clamp01 = function (v) { return Math.max(0, Math.min(1, v)); };
   var smooth = function (t) { t = clamp01(t); return t * t * (3 - 2 * t); };
-
-  spec.textContent = "seed " + String(cfg.tree.seed).padStart(2, "0") + " · " + cfg.nodes.length + " buds";
-
-  var scene = null;
-  var failure = "";
-  try { scene = window.TreeScene(canvas, cfg); } catch (e) { scene = null; failure = e && e.message ? e.message : String(e); }
-  if (!scene) {
-    // The page still works as a plain page; say why the tree is missing.
-    root.classList.add("no-webgl");
-    var note = document.getElementById("tree-error");
-    note.textContent = (window.THREE ? "Tree unavailable: the drawing could not start in this browser. " : "Tree unavailable: three.js did not load. ") + failure;
-    note.hidden = false;
-    if (window.console) console.error("Tree scene failed:", failure);
-    return;
-  }
-
-  canvas = document.getElementById("tree");   // the scene may have swapped the canvas
-  spec.textContent += " \u00b7 " + scene.mode;
-
-  var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  stage.style.setProperty("--screens", reduced ? 1 : cfg.scroll.screens);
 
   // Tree buttons are real links, positioned over the canvas every frame.
   var els = {};
@@ -43,12 +19,20 @@
     el.className = "node " + (n.side === "root" ? "down" : "up");
     var a = document.createElement("a");
     a.href = n.href || ("#" + n.id);
-    var name = document.createElement("span"); name.className = "name"; name.textContent = n.label;
-    var kind = document.createElement("span"); kind.className = "kind"; kind.textContent = n.kind;
-    a.appendChild(name); a.appendChild(kind); el.appendChild(a);
+    a.textContent = n.label;
+    el.appendChild(a);
     labels.appendChild(el);
-    els[n.id] = { el: el, a: a, half: 50 };
+    els[n.id] = { el: el, a: a, half: 40 };
   });
+
+  var scene = null;
+  try { scene = window.TreeScene(document.getElementById("tree"), cfg); }
+  catch (e) { if (window.console) console.error("Tree could not start:", e); }
+  if (!scene) { root.classList.add("no-tree"); return; }   // buttons stay, as a plain list
+  root.setAttribute("data-renderer", scene.mode);
+
+  var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  stage.style.setProperty("--screens", reduced ? 1 : cfg.scroll.screens);
 
   var W = 1, H = 1;
   function measure() {
@@ -74,19 +58,20 @@
     pointerTarget.y = (e.clientY / window.innerHeight) * 2 - 1;
   });
 
-  var progress = reduced ? 1 : 0;
   function target() {
     if (reduced) return 1;
-    var r = stage.getBoundingClientRect();
-    var total = r.height - H;
-    return total > 0 ? clamp01(-r.top / total) : 0;
+    var total = stage.offsetHeight - H;
+    return total > 0 ? clamp01(-stage.getBoundingClientRect().top / total) : 0;
   }
 
+  // "index.html#grown" (used by the Back links) opens the tree already complete.
+  if (location.hash === "#grown" && !reduced) window.scrollTo(0, stage.offsetHeight - H);
+
+  var progress = null;
   function frame(ms) {
     requestAnimationFrame(frame);
-    if (stage.getBoundingClientRect().bottom < -40) return;   // tree is off screen: rest
-
     var t = target();
+    if (progress === null) progress = t;      // no replay when the page opens part-way down
     progress += (t - progress) * cfg.scroll.smoothing;
     if (Math.abs(t - progress) < 0.0004) progress = t;
     pointer.x += (pointerTarget.x - pointer.x) * 0.05;
@@ -94,13 +79,10 @@
 
     scene.update(progress, ms / 1000, pointer);
 
-    var fade = 1 - smooth((progress - cfg.timeline.title[0]) / (cfg.timeline.title[1] - cfg.timeline.title[0]));
-    hero.style.opacity = fade;
-    hero.style.transform = "translate3d(0," + (-(1 - fade) * 36) + "px,0)";
-    hero.style.visibility = fade < 0.01 ? "hidden" : "visible";
-    hint.style.opacity = fade;
+    var h = cfg.timeline.hint;
+    hint.style.opacity = 1 - smooth((progress - h[0]) / (h[1] - h[0]));
 
-    var gutter = 12;
+    var gutter = 8;
     scene.nodes.forEach(function (n) {
       var L = els[n.id];
       var x = Math.max(gutter + L.half, Math.min(W - gutter - L.half, n.x));

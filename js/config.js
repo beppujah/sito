@@ -7,25 +7,22 @@ window.SITE_CONFIG = {
 
   /* ---- MENU -------------------------------------------------------------
    * One entry per button on the tree.
-   *   id    : must match the id of a <section>/<article> in index.html
    *   label : text shown on the tree
-   *   kind  : small caption under the label
-   *   href  : optional. A dedicated page for this entry (see projects/).
-   *           Without it the button scrolls to the section with the same id.
+   *   href  : page opened when the button is clicked
    *   side  : "branch" (grows from the trunk), "root" (grows underground),
    *           "leader" (the very top of the trunk — use it once at most)
    * Add or remove entries freely: the tree redistributes its limbs.
    */
   nodes: [
-    { id: "oscilla16",   label: "Oscilla16",   kind: "groovebox",       side: "branch", href: "projects/oscilla16.html" },
-    { id: "chlorophone", label: "Chlorophone", kind: "plant sequencer", side: "branch", href: "projects/chlorophone.html" },
-    { id: "insettario",  label: "Insettario",  kind: "browser game",    side: "branch", href: "projects/insettario.html" },
-    { id: "moon-mood",   label: "Moon Mood",   kind: "phone app",       side: "branch", href: "projects/moon-mood.html" },
-    { id: "videos",      label: "Videos",      kind: "youtube",         side: "branch" },
-    { id: "about",       label: "About",       kind: "the trunk",       side: "leader" },
-    { id: "links",       label: "Links",       kind: "bookmarks",       side: "root" },
-    { id: "resources",   label: "Resources",   kind: "references",      side: "root" },
-    { id: "toolbox",     label: "Toolbox",     kind: "utilities",       side: "root" }
+    { id: "oscilla16",   label: "Oscilla16",   href: "projects/oscilla16.html",   side: "branch" },
+    { id: "chlorophone", label: "Chlorophone", href: "projects/chlorophone.html", side: "branch" },
+    { id: "insettario",  label: "Insettario",  href: "projects/insettario.html",  side: "branch" },
+    { id: "moon-mood",   label: "Moon Mood",   href: "projects/moon-mood.html",   side: "branch" },
+    { id: "videos",      label: "Videos",      href: "videos.html",               side: "branch" },
+    { id: "about",       label: "About",       href: "about.html",                side: "leader" },
+    { id: "links",       label: "Links",       href: "links.html",                side: "root" },
+    { id: "resources",   label: "Resources",   href: "resources.html",            side: "root" },
+    { id: "toolbox",     label: "Toolbox",     href: "toolbox.html",              side: "root" }
   ],
 
   /* ---- YOUTUBE --------------------------------------------------------
@@ -46,7 +43,7 @@ window.SITE_CONFIG = {
    * mode: "auto"   uses WebGL when the browser supports it, otherwise 2D canvas
    *       "canvas" always the 2D canvas renderer (works everywhere)
    *       "webgl"  always WebGL
-   * The current renderer is shown in the bottom-left caption of the page.
+   * The renderer in use is written on the <html> element as data-renderer.
    */
   render: { mode: "auto" },
 
@@ -88,7 +85,7 @@ window.SITE_CONFIG = {
    * All values are scroll progress, from 0 (top of the page) to 1 (tree complete).
    */
   timeline: {
-    title: [0.00, 0.14],          // the name fades out over this range
+    hint: [0.00, 0.08],           // the scroll cue fades out over this range
     roots: [0.03, 0.40],          // roots grow
     trunk: [0.12, 0.60],          // trunk grows (branches start as the trunk passes them)
     branchDuration: 0.26,         // how long each branch takes to grow
@@ -119,7 +116,7 @@ window.SITE_CONFIG = {
     ],
     sway: { degrees: 4, speed: 0.25 },   // idle left-right drift
     pointer: { degrees: 6 },             // parallax when the mouse moves
-    framing: { padX: 0.55, padY: 0.8, margin: 1.05 }  // room kept around the tree for labels
+    framing: { padX: 0.55, padY: 0.45, margin: 1.05 }  // room kept around the tree for labels
   },
 
   /* ---- ATMOSPHERE ------------------------------------------------------- */
