@@ -124,7 +124,11 @@ html.touch-paging[data-mode="full"] { scroll-snap-type: none; }
 html[data-mode="full"] .item-reactions {
   position: absolute;
   right: 0.55rem;
+  /* The photo is as tall as the screen with the browser bars hidden; when
+     the bottom bar is shown it covers the end of the photo. 100dvh is the
+     visible height right now, so the column stays above the bar. */
   bottom: max(1.25rem, env(safe-area-inset-bottom));
+  bottom: calc(var(--screen) - 100dvh + max(1.25rem, env(safe-area-inset-bottom)));
   display: flex;
   flex-direction: column;
   align-items: center;
