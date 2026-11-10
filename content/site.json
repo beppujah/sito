@@ -1,0 +1,16 @@
+{
+  "title": "beppujah",
+  "description": "Portfolio and notes.",
+  "url": "https://beppujah.github.io/sito",
+  "repo": "beppujah/sito",
+  "branch": "main",
+  "contact": [
+    { "label": "Email", "url": "mailto:you@example.com" },
+    { "label": "YouTube", "url": "https://www.youtube.com/@beppujah" },
+    { "label": "GitHub", "url": "https://github.com/beppujah" }
+  ],
+  "reactions": {
+    "supabase_url": "",
+    "supabase_anon_key": ""
+  }
+}

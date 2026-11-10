@@ -1,0 +1,213 @@
+/* ---------------------------------------------------------------
+   Tweakable values
+   --------------------------------------------------------------- */
+:root {
+  --ink: #111;
+  --muted: #8c8c8c;
+  --paper: #fff;
+  --font: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
+  --text-width: 40rem;   /* width of the text column */
+  --media-width: 64rem;  /* width of images and video inside a post */
+  --icon: 30px;          /* corner icon size */
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 17px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* No italics anywhere. */
+em, i, cite, address, dfn, var { font-style: normal; }
+
+img, video, iframe { display: block; max-width: 100%; border: 0; }
+a { color: inherit; text-underline-offset: 0.2em; text-decoration-thickness: 1px; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+
+/* ---------------------------------------------------------------
+   Corner icons
+   --------------------------------------------------------------- */
+.corner {
+  position: fixed;
+  top: max(0.6rem, env(safe-area-inset-top));
+  z-index: 10;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  /* thin dark halo keeps the icon readable on any photo */
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 5px rgba(0, 0, 0, 0.35));
+}
+.corner-left { left: max(0.6rem, env(safe-area-inset-left)); }
+.corner-right { right: max(0.6rem, env(safe-area-inset-right)); }
+.corner svg { width: var(--icon); height: var(--icon); }
+
+.page .corner {
+  color: var(--ink);
+  filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 4px #fff);
+}
+
+html[data-mode="full"] .icon-expand,
+html[data-mode="grid"] .icon-grid { display: none; }
+
+/* ---------------------------------------------------------------
+   Home: full screen feed and grid
+   --------------------------------------------------------------- */
+.home { overflow: hidden; background: #000; }
+
+.feed {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+.feed::-webkit-scrollbar { display: none; }
+
+.item { display: block; overflow: hidden; background: #111; }
+.item img { width: 100%; height: 100%; object-fit: cover; }
+
+html[data-mode="full"] .feed { scroll-snap-type: y mandatory; }
+html[data-mode="full"] .item {
+  height: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+html[data-mode="grid"] .feed {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-auto-rows: calc(100% / 3);
+  align-content: start;
+  gap: 0;
+}
+
+.empty { color: #fff; text-align: center; margin-top: 45vh; }
+
+/* ---------------------------------------------------------------
+   Post and text pages
+   --------------------------------------------------------------- */
+.page main { padding-bottom: 6rem; }
+
+.post-cover img { width: 100%; max-height: 100vh; max-height: 100svh; object-fit: cover; }
+
+.post-head,
+.post-body > *,
+.prose {
+  max-width: var(--text-width);
+  margin-inline: auto;
+  padding-inline: 1.25rem;
+}
+
+.prose { padding-top: 5.5rem; }
+
+h1 {
+  margin: 2.5rem 0 0.4rem;
+  font-size: clamp(1.9rem, 6vw, 2.8rem);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+.prose h1 { margin-top: 0; margin-bottom: 1.5rem; }
+h2 { margin: 2.5rem auto 0.6rem; font-size: 1.25rem; font-weight: 600; line-height: 1.3; }
+h3 { margin: 2rem auto 0.5rem; font-size: 1rem; font-weight: 600; }
+p, ul { margin-block: 0 1.1rem; }
+.post-body > ul { padding-left: 2.5rem; }
+
+time { color: var(--muted); font-size: 0.85rem; }
+.post-body { margin-top: 2rem; }
+
+.post-body > figure {
+  max-width: var(--media-width);
+  padding-inline: 0;
+  margin-block: 2.5rem;
+}
+figure img, figure video { width: 100%; height: auto; }
+figure.embed { aspect-ratio: 16 / 9; }
+figure.embed iframe { width: 100%; height: 100%; }
+.post-body > figure.audio { max-width: var(--text-width); padding-inline: 1.25rem; }
+figure audio { width: 100%; }
+
+code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; }
+
+.links { list-style: none; padding: 0; }
+.links li { margin-bottom: 0.35rem; }
+
+/* ---------------------------------------------------------------
+   Reactions
+   --------------------------------------------------------------- */
+.reactions {
+  display: flex;
+  justify-content: center;
+  gap: clamp(0.25rem, 2.5vw, 1.1rem);
+  max-width: var(--text-width);
+  margin: 4.5rem auto 0;
+  padding-inline: 0.75rem;
+}
+.reaction {
+  width: 40px;
+  display: grid;
+  justify-items: center;
+  gap: 0.2rem;
+  padding-block: 0.35rem;
+  color: #a3a3a3;
+  transition: color 0.15s;
+}
+.reaction svg { width: 26px; height: 26px; }
+.reaction[aria-pressed="true"] { color: var(--ink); }
+.reaction[aria-pressed="true"] svg { stroke-width: 2.1; }
+@media (hover: hover) { .reaction:hover { color: var(--ink); } }
+.reaction .count {
+  min-height: 1.1em;
+  font-size: 0.7rem;
+  line-height: 1.1;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------
+   Editor
+   --------------------------------------------------------------- */
+.admin label { display: block; margin-top: 1.4rem; font-size: 0.8rem; color: var(--muted); }
+.admin input:not([type="file"]),
+.admin select,
+.admin textarea {
+  display: block;
+  width: 100%;
+  margin-top: 0.3rem;
+  padding: 0.55rem 0;
+  border: 0;
+  border-bottom: 1px solid #d4d4d4;
+  border-radius: 0;
+  background: none;
+  color: var(--ink);
+  font: inherit;
+  font-size: 16px; /* avoids zoom-on-focus on iPhone */
+}
+.admin textarea { padding: 0.6rem; border: 1px solid #d4d4d4; line-height: 1.5; resize: vertical; }
+.admin input[type="file"] { display: block; margin-top: 0.5rem; font: inherit; font-size: 0.85rem; color: var(--ink); }
+.admin input:focus, .admin select:focus, .admin textarea:focus { outline: none; border-color: var(--ink); }
+.admin details { margin-bottom: 0.5rem; }
+.admin summary { cursor: pointer; }
+.hint { margin: 0.4rem 0 0; font-size: 0.8rem; color: var(--muted); }
+#media-list { margin-top: 0.6rem; font-size: 0.85rem; }
+.button {
+  margin-top: 2rem;
+  padding: 0.7rem 1.6rem;
+  background: var(--ink);
+  color: var(--paper);
+  font-size: 0.95rem;
+}
+.button:disabled { opacity: 0.4; cursor: default; }
+#status { min-height: 1.6em; margin-top: 1rem; font-size: 0.9rem; }
+#status.error { color: #b3261e; }
