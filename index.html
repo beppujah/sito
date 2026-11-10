@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- Keeps search engines away while the site is a work in progress. Remove when going public. -->
+<meta name="robots" content="noindex">
+<title>Beppe's Arbor</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Beppe: sound machines, plant sequencers and small apps.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=IBM+Plex+Mono&family=IBM+Plex+Sans:wght@400;500&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="top">
+  <a class="brand" href="#stage">Beppe</a>
+  <nav class="mono" aria-label="Sections">
+    <a href="#works">Works</a>
+    <a href="#videos">Videos</a>
+    <a href="#about">About</a>
+    <a href="#roots">Roots</a>
+  </nav>
+</header>
+
+<main>
+  <!-- The scroll-driven tree. Its buttons are generated from js/config.js. -->
+  <section id="stage" aria-label="Tree menu">
+    <div id="view">
+      <canvas id="tree" aria-hidden="true"></canvas>
+      <div id="hero">
+        <div class="inner">
+          <h1>Beppe</h1>
+          <p>Sound machines, plant sequencers and small apps.</p>
+        </div>
+      </div>
+      <div id="labels"></div>
+      <div id="spec" class="mono"></div>
+      <div id="hint" class="mono"><span>Scroll to grow</span><i></i></div>
+    </div>
+  </section>
+
+  <section id="works" class="band">
+    <div class="wrap">
+      <div class="side">
+        <span class="mono">Branches</span>
+        <h2>Works</h2>
+      </div>
+      <div class="entries">
+        <article class="entry" id="oscilla16">
+          <div class="head"><h3><a href="projects/oscilla16.html">Oscilla16</a></h3><span class="mono">groovebox</span></div>
+          <p>A groovebox and drum machine built on the Daisy Seed.</p>
+        </article>
+        <article class="entry" id="chlorophone">
+          <div class="head"><h3><a href="projects/chlorophone.html">Chlorophone</a></h3><span class="mono">plant sequencer</span></div>
+          <p>A generative sequencer played by a plant, behind a leaf-shaped panel.</p>
+        </article>
+        <article class="entry" id="insettario">
+          <div class="head"><h3><a href="projects/insettario.html">Insettario</a></h3><span class="mono">browser game</span></div>
+          <p>A browser game about exploring the world of insects.</p>
+        </article>
+        <article class="entry" id="moon-mood">
+          <div class="head"><h3><a href="projects/moon-mood.html">Moon Mood</a></h3><span class="mono">phone app</span></div>
+          <p>The real position and phase of the moon, next to a daily mood log.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section id="videos" class="band">
+    <div class="wrap">
+      <div class="side">
+        <span class="mono">Branch</span>
+        <h2>Videos</h2>
+      </div>
+      <div class="entries">
+        <!-- Filled from "youtube" in js/config.js -->
+        <div id="video-grid" class="video-grid">
+          <p class="note">No videos yet. Add your channel id or video ids under "youtube" in js/config.js.</p>
+        </div>
+        <p><a id="channel-link" href="#videos" hidden>Open the YouTube channel</a></p>
+      </div>
+    </div>
+  </section>
+
+  <section id="about" class="band">
+    <div class="wrap">
+      <div class="side">
+        <span class="mono">Trunk</span>
+        <h2>About</h2>
+      </div>
+      <div class="entries">
+        <div class="entry">
+          <p>Beppe builds instruments and small apps that make sound and pay attention to nature.</p>
+          <p class="note">Placeholder text. Replace it with your bio in index.html.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="roots" class="band">
+    <div class="wrap">
+      <div class="side">
+        <span class="mono">Underground</span>
+        <h2>Roots</h2>
+      </div>
+      <div class="entries">
+        <article class="entry" id="links">
+          <div class="head"><h3>Links</h3><span class="mono">bookmarks</span></div>
+          <p>Pages worth coming back to.</p>
+        </article>
+        <article class="entry" id="resources">
+          <div class="head"><h3>Resources</h3><span class="mono">references</span></div>
+          <p>Datasheets, manuals and reading material.</p>
+        </article>
+        <article class="entry" id="toolbox">
+          <div class="head"><h3>Toolbox</h3><span class="mono">utilities</span></div>
+          <p>Small tools for everyday use.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="band">
+  <div class="wrap mono">Drawn with three.js</div>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="js/config.js"></script>
+<script src="js/tree.js"></script>
+<script src="js/scene.js"></script>
+<script src="js/main.js"></script>
+<script src="js/video.js"></script>
+</body>
+</html>
