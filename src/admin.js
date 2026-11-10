@@ -201,6 +201,7 @@
     ['title', 'slug', 'text', 'cover', 'media'].forEach(function (id) { $(id).value = ''; });
     $('hidden').checked = false;
     $('pinned').checked = false;
+    $('background').checked = true; // new posts open on their cover by default
     $('delete').hidden = true;
     disarmDelete();
     labelPublish();
@@ -303,6 +304,7 @@
       $('text').value = parsed.body;
       $('hidden').checked = isTrue(parsed.meta.draft);
       $('pinned').checked = isTrue(parsed.meta.pinned);
+      $('background').checked = isTrue(parsed.meta.background);
       $('delete').hidden = false;
       labelPublish();
       $('cover-note').textContent = 'Current cover: ' + state.editing.cover + '. Choose a file only to replace it.';
@@ -346,9 +348,10 @@
     var front = ['title: ' + title, 'date: ' + date, 'cover: ' + coverName];
     if (hidden) front.push('draft: true');
     if (pinned) front.push('pinned: true');
+    if ($('background').checked) front.push('background: true');
     if (state.editing) {
       Object.keys(state.editing.meta).forEach(function (key) { // keep any other field
-        if (['title', 'date', 'cover', 'draft', 'pinned'].indexOf(key) < 0) {
+        if (['title', 'date', 'cover', 'draft', 'pinned', 'background'].indexOf(key) < 0) {
           front.push(key + ': ' + state.editing.meta[key]);
         }
       });

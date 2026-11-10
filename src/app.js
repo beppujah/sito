@@ -165,6 +165,45 @@
   }
 
   /* ------------------------------------------------------------------
+     Post with the cover as background: a tap (or scrolling down) shows
+     the text over a faded cover; a tap on an empty area, or Escape,
+     goes back to the plain cover.
+     ------------------------------------------------------------------ */
+  var reveal = document.querySelector('.reveal');
+  if (reveal) {
+    var body = document.body;
+    var show = function () {
+      if (body.classList.contains('reading')) return;
+      body.classList.add('reading');
+      window.scrollTo(0, 0);
+    };
+    var hide = function () {
+      body.classList.remove('reading');
+      reveal.focus({ preventScroll: true });
+    };
+    reveal.addEventListener('click', show);
+    window.addEventListener('wheel', function (event) {
+      if (!body.classList.contains('reading') && event.deltaY > 0) show();
+    }, { passive: true });
+    var touchY = null;
+    window.addEventListener('touchstart', function (event) { touchY = event.touches[0].clientY; }, { passive: true });
+    window.addEventListener('touchmove', function (event) {
+      if (touchY !== null && !body.classList.contains('reading') && touchY - event.touches[0].clientY > 30) {
+        touchY = null;
+        show();
+      }
+    }, { passive: true });
+    document.getElementById('post').addEventListener('click', function (event) {
+      var blank = event.target === this || /^(ARTICLE|HEADER|SECTION)$/.test(event.target.tagName) ||
+        event.target.classList.contains('post-body') || event.target.classList.contains('reactions-box');
+      if (blank && !String(window.getSelection())) hide();
+    });
+    document.addEventListener('keydown', function (event) {
+      if (event.key === 'Escape' && body.classList.contains('reading')) hide();
+    });
+  }
+
+  /* ------------------------------------------------------------------
      Reactions note: shown on hover, or toggled by tapping the asterisk.
      ------------------------------------------------------------------ */
   var info = document.querySelector('.reactions-info');

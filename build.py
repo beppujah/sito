@@ -276,6 +276,7 @@ def load_posts():
         meta, body = split_front_matter(source.read_text("utf-8"))
         hidden = meta.get("draft", "").lower() in TRUE
         pinned = meta.get("pinned", "").lower() in TRUE
+        background = meta.get("background", "").lower() in TRUE
         cover = meta.get("cover", "")
         if not cover:
             found = sorted(f.name for f in folder.glob("cover.*"))
@@ -299,6 +300,7 @@ def load_posts():
                 "folder": folder,
                 "hidden": hidden,
                 "pinned": pinned,
+                "background": background,
             }
         )
     # Pinned posts first, then newest first.
@@ -383,11 +385,24 @@ def reactions_html(slug):
 
 def post_page(site, post, version):
     date = post["date"]
+    cover = quote(post["cover"])
+    if post["background"]:
+        # The cover fills the screen; a tap shows the text over a faded copy of it.
+        intro = f"""<div class="post-bg" aria-hidden="true"><img src="{cover}" alt=""></div>
+<button class="reveal" type="button" aria-controls="post" aria-label="Show the text"></button>
+"""
+        cover_block = ""
+        body_class = "page has-bg"
+        head = "<script>document.documentElement.classList.add('js')</script>\n"
+    else:
+        intro = ""
+        cover_block = f'<div class="post-cover"><img src="{cover}" alt=""></div>\n'
+        body_class = "page"
+        head = ""
     body = f"""<a class="corner corner-left" href="../../" data-back aria-label="Back">{ICONS["back"]}</a>
-<main>
+{intro}<main id="post">
 <article class="post">
-<div class="post-cover"><img src="{quote(post["cover"])}" alt=""></div>
-<header class="post-head">
+{cover_block}<header class="post-head">
 <h1>{esc(post["title"])}</h1>
 <time datetime="{date.isoformat()}">{date.day} {date.strftime("%B %Y")}</time>
 </header>
@@ -403,8 +418,8 @@ def post_page(site, post, version):
     ) + "</script>\n"
     slug = quote(post["slug"])
     return page(site, title=post["title"], description=post["description"], root="../../", body=body,
-                body_class="page", version=version, path=f"posts/{slug}/",
-                image=f"posts/{slug}/{quote(post['cover'])}", foot=foot)
+                body_class=body_class, version=version, path=f"posts/{slug}/",
+                image=f"posts/{slug}/{cover}", head=head, foot=foot)
 
 
 def about_page(site, version):
@@ -466,6 +481,7 @@ def admin_page(site, version):
 <ul class="links" id="media-list"></ul>
 <label class="check"><input id="hidden" type="checkbox">Hidden (draft): saved, but not shown on the site</label>
 <label class="check"><input id="pinned" type="checkbox">Pinned to the top</label>
+<label class="check"><input id="background" type="checkbox">Cover as background: the post opens on the cover, a tap shows the text over it</label>
 <div class="actions">
 <button class="button" id="publish" type="button">Publish</button>
 <button class="button quiet" id="delete" type="button" hidden>Delete post</button>
@@ -525,7 +541,7 @@ def build():
     # Read by the editor; hidden posts are listed here so they can be reopened.
     index = [
         {"slug": p["slug"], "title": p["title"], "date": p["date"].isoformat(), "cover": p["cover"],
-         "hidden": p["hidden"], "pinned": p["pinned"]}
+         "hidden": p["hidden"], "pinned": p["pinned"], "background": p["background"]}
         for p in everything
     ]
     write(OUT / "posts.json", json.dumps(index, ensure_ascii=False, indent=1))

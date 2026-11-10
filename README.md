@@ -58,6 +58,9 @@ https://www.youtube.com/watch?v=XXXXXXXXXXX
 - `## Heading`, `**bold**`, `[text](https://...)`, `- list item`.
 - `draft: true` in the header hides a post: it stays in the repository but is not published.
 - `pinned: true` keeps a post first on the home page, above newer ones.
+- `background: true` opens the post on its cover, full screen; a tap (or scrolling
+  down) shows the text over a faded, blurred copy of the cover. The fade is
+  `--bg-filter` in `src/style.css`.
 - The folder name is the address of the post. Do not rename it once shared.
 - Posts are ordered by date, newest first.
 
@@ -77,6 +80,7 @@ to 2400 px before upload.
   from the Post list, untick the box and publish when it is ready. The same
   box takes a published post offline again.
 - **Pinned to the top** keeps the post first on the home page.
+- **Cover as background** (on by default for new posts) sets `background: true`.
 - The **x** next to a media file takes it out of the post and out of the text;
   files already published are deleted when you press Publish.
 - **Delete post** (two taps) removes the post folder. Earlier versions remain

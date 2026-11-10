@@ -12,6 +12,9 @@
   --column-ratio: 0.75;   /* home on big screens: column width = screen height x this (0.75 = 3:4) */
   --icon: 26px;           /* corner icon size */
   --column: min(100vw, calc(100vh * var(--column-ratio)));
+  /* Cover used as a post background, behind the text: almost no colour, low contrast, light. */
+  --bg-filter: grayscale(0.92) contrast(0.26) brightness(1.7) blur(2px);
+  --bg-ink-soft: #3d3d3d;  /* secondary text (date, reaction icons) over that background */
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -67,7 +70,8 @@ html[data-mode="grid"] .icon-grid { display: none; }
 /* ---------------------------------------------------------------
    Home: full screen feed and grid, in a column centred on big screens
    --------------------------------------------------------------- */
-html[data-mode] { scrollbar-width: none; }
+html[data-mode] { scrollbar-width: none; background: #000; }
+html[data-mode] body { background: #000; color: #fff; }
 html[data-mode]::-webkit-scrollbar { display: none; }
 html[data-mode="full"] { scroll-snap-type: y mandatory; }
 
@@ -76,7 +80,7 @@ html[data-mode="full"] { scroll-snap-type: y mandatory; }
   margin-inline: auto;
 }
 
-.item { display: block; overflow: hidden; background: #e8e8e8; }
+.item { display: block; overflow: hidden; background: #111; }
 .item img { width: 100%; height: 100%; object-fit: cover; }
 
 html[data-mode="full"] .item {
@@ -159,6 +163,50 @@ time { color: var(--muted); font-size: 0.85rem; }
   .post-body > .media { padding-inline: 1.25rem; }
   .media .audio { padding-inline: 0; }
 }
+
+/* ---------------------------------------------------------------
+   Post with the cover as background
+   --------------------------------------------------------------- */
+.post-bg {
+  position: fixed;
+  inset: 0;
+  height: 100vh;
+  z-index: -1;
+  background: #000;
+}
+.post-bg img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: filter 0.7s ease, transform 0.7s ease;
+}
+.has-bg { background: transparent; }
+.has-bg.reading .post-bg img, html:not(.js) .has-bg .post-bg img {
+  filter: var(--bg-filter);
+  transform: scale(1.04); /* hides the soft edge left by the blur */
+}
+.post-bg { overflow: hidden; }
+
+.reveal { display: none; }
+.js .has-bg:not(.reading) .reveal {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 5;
+  width: 100%;
+  cursor: pointer;
+}
+.js .has-bg:not(.reading) main { display: none; }
+.has-bg.reading main { animation: rise 0.6s ease both; }
+@keyframes rise { from { opacity: 0; transform: translateY(1.5rem); } }
+
+.has-bg main { padding-top: 3.5rem; }
+.has-bg time,
+.has-bg .reaction,
+.has-bg .reaction .count,
+.has-bg .reactions-info,
+.has-bg .reactions-note { color: var(--bg-ink-soft); }
+.has-bg .reaction[aria-pressed="true"] { color: var(--ink); }
 
 code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; }
 
