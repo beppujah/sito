@@ -72,7 +72,9 @@
     var pressed = null;
     feed.addEventListener('pointerdown', function (event) {
       var item = event.target.closest('.item');
-      var moving = animating || Date.now() - lastScroll < 150;
+      // On touch screens every short tap is handled here: iOS may otherwise
+      // spend it on settling the page instead of opening the photo.
+      var moving = animating || Date.now() - lastScroll < 150 || event.pointerType === 'touch';
       pressed = moving && item && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey
         ? { href: item.href, x: event.clientX, y: event.clientY, at: Date.now() } : null;
     });

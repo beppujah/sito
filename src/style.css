@@ -107,6 +107,8 @@ html[data-mode="full"] { scroll-snap-type: y mandatory; }
 .item {
   position: relative;
   display: block;
+  touch-action: manipulation; /* no double-tap zoom: taps open at once */
+  -webkit-touch-callout: none;
   overflow: hidden;
   background: #111 var(--spinner) center / 22px no-repeat;
 }
