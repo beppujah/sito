@@ -800,7 +800,7 @@ def admin_page(site, version):
 <label>Access token<input id="token" type="password" autocomplete="off"></label>
 <p class="hint">A fine-grained GitHub token limited to this repository, with read and write access to Contents. It is kept in this browser only and sent only to api.github.com.</p>
 </details>
-<label>Post<select id="post"><option value="">New post</option><option value="@about">About page</option><option value="@settings">Site settings</option></select></label>
+<label>Post<select id="post"><option value="">New post</option><option value="@about">About page</option><option value="@settings">Site settings</option><option value="@bulk">All posts: hide, show, delete</option></select></label>
 <div class="post-only">
 <label>Title<input id="title" autocomplete="off"></label>
 <label>Date<input id="date" type="date"></label>
@@ -848,6 +848,16 @@ def admin_page(site, version):
 <label id="text-color-row" hidden>Custom text colour<input id="text-color" type="color" value="#111111"></label>
 <label class="check"><input id="hidden" type="checkbox">Hidden (draft): saved, but not shown on the site</label>
 <label class="check"><input id="pinned" type="checkbox">Pinned to the top</label>
+</div>
+<div class="bulk-only" hidden>
+<p class="hint">Tick the posts, then choose what to do. Everything happens in one save.</p>
+<p class="bulk-tools"><button class="flag" id="bulk-all" type="button">Select all</button> <button class="flag" id="bulk-none" type="button">Select none</button></p>
+<ul class="links" id="bulk-list"></ul>
+<div class="bulk-actions">
+<button class="button quiet" id="bulk-hide" type="button">Hide</button>
+<button class="button quiet" id="bulk-show" type="button">Show</button>
+<button class="button quiet" id="bulk-delete" type="button">Delete</button>
+</div>
 </div>
 <div class="actions">
 <button class="button" id="publish" type="button">Publish</button>

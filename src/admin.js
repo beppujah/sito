@@ -46,6 +46,7 @@
     if (body) headers['Content-Type'] = 'application/json';
     return fetch(API + '/repos/' + $('repo').value.trim() + path, {
       method: method || 'GET',
+      cache: 'no-store', // never reuse an old answer: a stale branch head breaks the next save (422)
       headers: headers,
       body: body ? JSON.stringify(body) : undefined
     }).then(function (response) {
@@ -53,6 +54,26 @@
         if (!response.ok) throw new Error('GitHub ' + response.status + ': ' + (data.message || response.statusText));
         return data;
       });
+    });
+  };
+
+  // One commit with the given tree entries, on top of the latest version of
+  // the branch. If the branch moved meanwhile (GitHub 422), try again once.
+  var commitTree = function (entries, message, retried) {
+    var branch = $('branch').value.trim() || 'main';
+    var head;
+    return gh('/git/ref/heads/' + encodeURIComponent(branch)).then(function (ref) {
+      head = ref.object.sha;
+      return gh('/git/commits/' + head);
+    }).then(function (commit) {
+      return gh('/git/trees', 'POST', { base_tree: commit.tree.sha, tree: entries });
+    }).then(function (tree) {
+      return gh('/git/commits', 'POST', { message: message, tree: tree.sha, parents: [head] });
+    }).then(function (commit) {
+      return gh('/git/refs/heads/' + encodeURIComponent(branch), 'PATCH', { sha: commit.sha });
+    }).catch(function (error) {
+      if (!retried && /GitHub 422/.test(error.message)) return commitTree(entries, message, true);
+      throw error;
     });
   };
 
@@ -294,14 +315,15 @@
   // Switch the form between a post and the about page.
   // Switch the form between a post, the about page and the site settings.
   var showSection = function (name) {
-    ['post', 'about', 'settings'].forEach(function (section) {
+    ['post', 'about', 'settings', 'bulk'].forEach(function (section) {
       Array.prototype.forEach.call(document.querySelectorAll('.' + section + '-only'), function (el) {
         el.hidden = section !== name;
       });
     });
     Array.prototype.forEach.call(document.querySelectorAll('.text-block'), function (el) {
-      el.hidden = name === 'settings';
+      el.hidden = name === 'settings' || name === 'bulk';
     });
+    $('publish').parentNode.hidden = name === 'bulk';
     if (name !== 'post') $('delete').hidden = true;
   };
   var showAbout = function (on) { showSection(on ? 'about' : 'post'); };
@@ -347,7 +369,7 @@
   // Rebuild the "Post" list from state.posts.
   var listPosts = function () {
     var select = $('post');
-    while (select.options.length > 3) select.remove(3); // keep "New post", "About page", "Site settings"
+    while (select.options.length > 4) select.remove(4); // keep the first four entries
     state.posts.forEach(function (post) {
       var option = document.createElement('option');
       option.value = post.slug;
@@ -366,6 +388,7 @@
     state.flags = { background: null, banner: null };
     state.about = null;
     state.settings = null;
+    state.bulk = false;
     openDetails = {};
     $('preview').hidden = true;
     state.slugTouched = false;
@@ -469,6 +492,7 @@
     status('Loading…');
     if (slug === '@about') return loadAbout();
     if (slug === '@settings') return loadSettings();
+    if (slug === '@bulk') return loadBulk();
     var path = '/contents/content/posts/' + encodeURIComponent(slug) + '/post.md?ref=' +
       encodeURIComponent($('branch').value.trim() || 'main');
     var folderPath = '/contents/content/posts/' + encodeURIComponent(slug) + '?ref=' +
@@ -592,6 +616,131 @@
       $('publish').disabled = false;
     });
   };
+
+  /* ---------------- all posts: hide, show, delete ---------------- */
+
+  var renderBulk = function () {
+    var list = $('bulk-list');
+    list.textContent = '';
+    state.posts.forEach(function (post) {
+      var row = document.createElement('li');
+      var label = document.createElement('label');
+      label.className = 'check';
+      var box = document.createElement('input');
+      box.type = 'checkbox';
+      box.value = post.slug;
+      label.appendChild(box);
+      label.appendChild(document.createTextNode(post.date + '  ' + post.title +
+        (post.pinned ? '  (pinned)' : '') + (post.hidden ? '  (hidden)' : '')));
+      row.appendChild(label);
+      list.appendChild(row);
+    });
+    if (!state.posts.length) list.textContent = 'No posts.';
+  };
+
+  var loadBulk = function () {
+    state.bulk = true;
+    showSection('bulk');
+    renderBulk();
+    disarmBulk();
+    status('');
+  };
+
+  var chosen = function () {
+    return Array.prototype.filter.call($('bulk-list').querySelectorAll('input'), function (box) { return box.checked; })
+      .map(function (box) { return box.value; });
+  };
+  $('bulk-all').addEventListener('click', function () {
+    Array.prototype.forEach.call($('bulk-list').querySelectorAll('input'), function (box) { box.checked = true; });
+  });
+  $('bulk-none').addEventListener('click', function () {
+    Array.prototype.forEach.call($('bulk-list').querySelectorAll('input'), function (box) { box.checked = false; });
+  });
+
+  var disarmBulk = function () {
+    $('bulk-delete').textContent = 'Delete';
+    $('bulk-delete').classList.remove('danger');
+  };
+
+  var bulkBusy = function (busy) {
+    ['bulk-hide', 'bulk-show', 'bulk-delete'].forEach(function (id) { $(id).disabled = busy; });
+  };
+
+  var needToken = function () {
+    if ($('token').value.trim()) return false;
+    $('settings').open = true;
+    status('Set the access token under Connection.', true);
+    return true;
+  };
+
+  // Hide or show: set or remove "draft: true" in each post's header.
+  var bulkVisibility = function (hide) {
+    var slugs = chosen();
+    if (!slugs.length) return status('Tick at least one post.', true);
+    if (needToken()) return;
+    var ref = '?ref=' + encodeURIComponent($('branch').value.trim() || 'main');
+    bulkBusy(true);
+    status('Reading ' + slugs.length + ' post' + (slugs.length > 1 ? 's' : '') + '…');
+    Promise.all(slugs.map(function (slug) {
+      return gh('/contents/content/posts/' + encodeURIComponent(slug) + '/post.md' + ref).then(function (file) {
+        var text = decode(file).replace(/\r\n/g, '\n');
+        var end = text.indexOf('\n---', 3);
+        if (!/^---/.test(text) || end < 0) throw new Error(slug + ': no header found');
+        var head = text.slice(0, end).replace(/\ndraft:[^\n]*/g, '');
+        if (hide) head += '\ndraft: true';
+        return { path: 'content/posts/' + slug + '/post.md', mode: '100644', type: 'blob', content: head + text.slice(end) };
+      });
+    })).then(function (entries) {
+      status('Saving…');
+      return commitTree(entries, (hide ? 'Hide ' : 'Show ') + slugs.length + ' post' + (slugs.length > 1 ? 's' : '') +
+        ': ' + slugs.join(', '));
+    }).then(function () {
+      state.posts.forEach(function (post) { if (slugs.indexOf(post.slug) >= 0) post.hidden = hide; });
+      listPosts();
+      $('post').value = '@bulk';
+      renderBulk();
+      status((hide ? 'Hidden' : 'Shown') + ': ' + slugs.length + '. The site updates in about a minute.');
+    }).catch(function (error) {
+      status(error.message, true);
+    }).then(function () { bulkBusy(false); });
+  };
+  $('bulk-hide').addEventListener('click', function () { disarmBulk(); bulkVisibility(true); });
+  $('bulk-show').addEventListener('click', function () { disarmBulk(); bulkVisibility(false); });
+
+  $('bulk-delete').addEventListener('click', function () {
+    var slugs = chosen();
+    if (!slugs.length) return status('Tick at least one post.', true);
+    if (needToken()) return;
+    if (!$('bulk-delete').classList.contains('danger')) { // first tap arms, second tap deletes
+      $('bulk-delete').textContent = 'Tap again to delete ' + slugs.length;
+      $('bulk-delete').classList.add('danger');
+      status('This removes ' + slugs.length + ' post' + (slugs.length > 1 ? 's' : '') + ' with their images and media.');
+      return;
+    }
+    var ref = '?ref=' + encodeURIComponent($('branch').value.trim() || 'main');
+    bulkBusy(true);
+    status('Deleting…');
+    Promise.all(slugs.map(function (slug) {
+      return gh('/contents/content/posts/' + encodeURIComponent(slug) + ref).then(function (files) {
+        return (Array.isArray(files) ? files : []).filter(function (entry) { return entry.type === 'file'; })
+          .map(function (entry) { return { path: entry.path, mode: '100644', type: 'blob', sha: null }; });
+      });
+    })).then(function (groups) {
+      var entries = [].concat.apply([], groups);
+      if (!entries.length) throw new Error('Nothing to delete: the post folders are empty or missing.');
+      return commitTree(entries, 'Delete ' + slugs.length + ' post' + (slugs.length > 1 ? 's' : '') + ': ' + slugs.join(', '));
+    }).then(function () {
+      state.posts = state.posts.filter(function (post) { return slugs.indexOf(post.slug) < 0; });
+      listPosts();
+      $('post').value = '@bulk';
+      renderBulk();
+      disarmBulk();
+      status('Deleted: ' + slugs.length + '. The site updates in about a minute.');
+    }).catch(function (error) {
+      disarmBulk();
+      status(error.message, true);
+    }).then(function () { bulkBusy(false); });
+  });
 
   /* ---------------- site settings ---------------- */
 
