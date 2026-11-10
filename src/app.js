@@ -36,9 +36,35 @@
       return 0;
     };
 
+    var STEP_TIME = 550; // ms for the slide from one photo to the next
+    var animating = false;
+
+    var ease = function (t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; };
+
+    // Slide to a photo with our own animation. Snapping is paused meanwhile:
+    // some browsers (Safari) cancel a smooth scroll on a snapping page.
+    var slideTo = function (target) {
+      var start = window.scrollY;
+      var distance = target - start;
+      var began = null;
+      animating = true;
+      root.style.scrollSnapType = 'none';
+      var frame = function (now) {
+        if (began === null) began = now;
+        var t = Math.min(1, (now - began) / STEP_TIME);
+        window.scrollTo(0, start + distance * ease(t));
+        if (t < 1) return requestAnimationFrame(frame);
+        window.scrollTo(0, target);
+        root.style.scrollSnapType = '';
+        animating = false;
+      };
+      requestAnimationFrame(frame);
+    };
+
     var goTo = function (index, smooth) {
       if (!items[index]) return;
-      window.scrollTo({ top: items[index].offsetTop, behavior: smooth ? 'smooth' : 'auto' });
+      if (smooth) slideTo(items[index].offsetTop);
+      else window.scrollTo(0, items[index].offsetTop);
     };
 
     var label = function () {
@@ -70,7 +96,7 @@
        (a short pause in the wheel events), so photos do not fly past.
        Touch screens keep the native snapping. */
     var GESTURE_GAP = 180;  // ms without wheel events that ends a gesture
-    var MIN_STEP = 650;     // ms a photo stays put at least
+    var MIN_STEP = 700;     // ms between two moves at least (includes the slide)
     var THRESHOLD = 20;     // wheel distance needed to move
     var lastWheel = 0;
     var lockedAt = 0;
@@ -85,6 +111,7 @@
       var gap = now - lastWheel;
       lastWheel = now;
       if (gap > GESTURE_GAP) travel = 0;
+      if (animating) return;
       if (locked) {
         if (gap > GESTURE_GAP && now - lockedAt > MIN_STEP) locked = false;
         else return;

@@ -58,8 +58,12 @@ ICONS = {
         '<rect x="4.5" y="13.5" width="6" height="6"/><rect x="13.5" y="13.5" width="6" height="6"/>',
         cls="icon-grid",
     ),
-    # Full screen: a single frame.
-    "expand": svg('<rect x="6.5" y="3.5" width="11" height="17"/>', cls="icon-expand"),
+    # Full screen: two diagonal arrows.
+    "expand": svg(
+        '<path d="M14.5 4.5h5v5"/><path d="M19.5 4.5l-6 6"/>'
+        '<path d="M9.5 19.5h-5v-5"/><path d="M4.5 19.5l6-6"/>',
+        cls="icon-expand",
+    ),
     "sun": svg(
         '<circle cx="12" cy="12" r="3.8"/>'
         '<path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4'
