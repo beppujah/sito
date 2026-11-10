@@ -37,30 +37,47 @@
       return 0;
     };
 
-    var STEP_TIME = 550; // ms for the slide from one photo to the next
+    var STEP_TIME = 550;  // ms for the slide from one photo to the next (mouse, trackpad)
+    var SNAP_TIME = 240;  // ms for the snap after a swipe on a touch screen
     var animating = false;
+    var slide = null;     // the running slide: { target, frame }
 
     var ease = function (t) { return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2; };
 
     // Slide to a photo with our own animation. Snapping is paused meanwhile:
     // some browsers (Safari) cancel a smooth scroll on a snapping page.
-    var slideTo = function (target) {
+    var easeOut = function (t) { return 1 - Math.pow(1 - t, 3); };
+
+    // Jump to the end of a running slide (a tap must land on a still page).
+    var finishSlide = function () {
+      if (!slide) return;
+      cancelAnimationFrame(slide.frame);
+      window.scrollTo(0, slide.target);
+      slide = null;
+      root.style.scrollSnapType = '';
+      animating = false;
+    };
+
+    var slideTo = function (target, duration, curve) {
+      finishSlide();
       if (reduceMotion) return window.scrollTo(0, target);
       var start = window.scrollY;
       var distance = target - start;
       var began = null;
+      duration = duration || STEP_TIME;
+      curve = curve || ease;
       animating = true;
       root.style.scrollSnapType = 'none';
+      slide = { target: target, frame: 0 };
       var frame = function (now) {
+        if (!slide) return;
         if (began === null) began = now;
-        var t = Math.min(1, (now - began) / STEP_TIME);
-        window.scrollTo(0, start + distance * ease(t));
-        if (t < 1) return requestAnimationFrame(frame);
-        window.scrollTo(0, target);
-        root.style.scrollSnapType = '';
-        animating = false;
+        var t = Math.min(1, (now - began) / duration);
+        window.scrollTo(0, start + distance * curve(t));
+        if (t < 1) { slide.frame = requestAnimationFrame(frame); return; }
+        finishSlide();
       };
-      requestAnimationFrame(frame);
+      slide.frame = requestAnimationFrame(frame);
     };
 
     // A click or tap while the photos are moving (our slide, or the phone's
@@ -72,11 +89,12 @@
     var pressed = null;
     feed.addEventListener('pointerdown', function (event) {
       var item = event.target.closest('.item');
+      if (event.target.closest('.item-reactions')) item = null; // a reaction, not the photo
       // On touch screens every short tap is handled here: iOS may otherwise
       // spend it on settling the page instead of opening the photo.
       var moving = animating || Date.now() - lastScroll < 150 || event.pointerType === 'touch';
       pressed = moving && item && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey
-        ? { href: item.href, x: event.clientX, y: event.clientY, at: Date.now() } : null;
+        ? { href: item.querySelector('.item-link').href, x: event.clientX, y: event.clientY, at: Date.now() } : null;
     });
     window.addEventListener('pointercancel', function () { pressed = null; });
     window.addEventListener('pointerup', function (event) {
@@ -87,6 +105,50 @@
         location.href = press.href;
       }
     });
+
+    /* Touch screens, full screen: the finger drags the page as usual (so the
+       browser bars can shrink), and on release the script snaps to the
+       next or previous photo quickly. A touch during that snap ends it at
+       once, so the tap reaches the photo. */
+    if (window.matchMedia && matchMedia('(pointer: coarse)').matches) {
+      root.classList.add('touch-paging');
+      var touch = null;
+      window.addEventListener('touchstart', function (event) {
+        if (root.dataset.mode !== 'full' || event.touches.length > 1) { touch = null; return; }
+        finishSlide();
+        touch = { y: event.touches[0].clientY, top: window.scrollY, at: Date.now() };
+      }, { passive: true });
+      window.addEventListener('touchcancel', function () { touch = null; }, { passive: true });
+      // Safety net: if the page comes to rest between two photos (leftover
+      // inertia), settle on the nearest one.
+      var settle = 0;
+      window.addEventListener('scroll', function () {
+        clearTimeout(settle);
+        settle = setTimeout(function () {
+          if (touch || animating || root.dataset.mode !== 'full' || !items.length) return;
+          var height = items[0].offsetHeight;
+          var nearest = Math.max(0, Math.min(items.length - 1, Math.round(window.scrollY / height)));
+          if (Math.abs(window.scrollY - nearest * height) > 2) slideTo(items[nearest].offsetTop, SNAP_TIME, easeOut);
+        }, 140);
+      }, { passive: true });
+      window.addEventListener('touchend', function (event) {
+        if (!touch || root.dataset.mode !== 'full') return;
+        var moved = touch.y - event.changedTouches[0].clientY;
+        var time = Math.max(1, Date.now() - touch.at);
+        var height = items[0] ? items[0].offsetHeight : window.innerHeight;
+        var from = Math.round(touch.top / height);
+        touch = null;
+        if (Math.abs(moved) < 10 && Math.abs(window.scrollY - from * height) < 2) return; // a tap
+        var flick = Math.abs(moved) / time > 0.3 || Math.abs(moved) > height * 0.18;
+        var index = Math.max(0, Math.min(items.length - 1, from + (flick ? (moved > 0 ? 1 : -1) : 0)));
+        // Stop the phone's own inertia, then snap.
+        root.style.overflow = 'hidden';
+        requestAnimationFrame(function () {
+          root.style.overflow = '';
+          slideTo(items[index].offsetTop, SNAP_TIME, easeOut);
+        });
+      }, { passive: true });
+    }
 
     var goTo = function (index, smooth) {
       if (!items[index]) return;
@@ -243,15 +305,15 @@
      Reactions: one per visitor per post, anonymous.
      The visitor is a random id kept in this browser. Without a backend
      (see reactions.sql) the choice is only remembered on this device.
+     The same reactions appear under a post and, when the option is on,
+     over the photos of the home page.
      ------------------------------------------------------------------ */
-  var box = document.querySelector('.reactions');
+  var groups = Array.prototype.slice.call(document.querySelectorAll('.reactions[data-post], .item-reactions[data-post]'));
 
-  if (box) {
-    var post = box.dataset.post;
+  if (groups.length) {
     var config = window.SITE_REACTIONS || {};
     var remote = !!(config.url && config.key);
-    var buttons = Array.prototype.slice.call(box.querySelectorAll('.reaction'));
-    var counts = {};
+    var counts = {}; // post -> { kind: number }
 
     var uuid = function () {
       if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
@@ -272,22 +334,33 @@
     };
     save();
 
-    var render = function () {
-      buttons.forEach(function (button) {
+    var render = function (group) {
+      var post = group.dataset.post;
+      var own = counts[post] || {};
+      var top = null;
+      Array.prototype.forEach.call(group.querySelectorAll('[data-kind]'), function (button) {
         var kind = button.dataset.kind;
+        var n = own[kind] || 0;
         button.setAttribute('aria-pressed', state.picks[post] === kind ? 'true' : 'false');
-        button.querySelector('.count').textContent = remote && counts[kind] > 0 ? counts[kind] : '';
+        button.querySelector('.count').textContent = remote && n > 0 ? n : '';
+        if (n > 0 && (!top || n > own[top.dataset.kind])) top = button;
       });
+      // Grid: only the most chosen reaction, small, over the photo.
+      var badge = group.parentNode.querySelector('.item-top');
+      if (badge) {
+        badge.textContent = '';
+        if (top && remote) {
+          badge.appendChild(top.querySelector('svg').cloneNode(true));
+          badge.appendChild(document.createTextNode(own[top.dataset.kind]));
+        }
+      }
     };
+    var renderAll = function () { groups.forEach(render); };
 
     var rpc = function (name, body) {
       return fetch(config.url + '/rest/v1/rpc/' + name, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          apikey: config.key,
-          Authorization: 'Bearer ' + config.key
-        },
+        headers: { 'Content-Type': 'application/json', apikey: config.key, Authorization: 'Bearer ' + config.key },
         body: JSON.stringify(body)
       }).then(function (response) {
         if (!response.ok) throw new Error('reactions: ' + response.status);
@@ -295,35 +368,62 @@
       });
     };
 
-    var refresh = function () {
+    var store = function (post, rows) {
+      counts[post] = {};
+      (rows || []).forEach(function (row) { counts[post][row.kind] = Number(row.count); });
+    };
+
+    var refresh = function (post) {
       return rpc('reaction_counts', { p_post: post }).then(function (rows) {
-        counts = {};
-        (rows || []).forEach(function (row) { counts[row.kind] = Number(row.count); });
-        render();
+        store(post, rows);
+        renderAll();
       }).catch(function () {});
     };
 
-    buttons.forEach(function (button) {
-      button.addEventListener('click', function () {
-        var kind = button.dataset.kind;
-        var previous = state.picks[post] || null;
-        var next = previous === kind ? null : kind; // tap again to remove
-        if (previous) counts[previous] = Math.max(0, (counts[previous] || 0) - 1);
-        if (next) {
-          counts[next] = (counts[next] || 0) + 1;
-          state.picks[post] = next;
-        } else {
-          delete state.picks[post];
-        }
-        save();
-        render();
-        if (remote) {
-          rpc('react', { p_post: post, p_voter: state.voter, p_kind: next }).then(refresh).catch(function () {});
-        }
+    // Totals for every post on the page: one request when the database has
+    // reaction_summary (see reactions.sql), otherwise one request per post.
+    var refreshAll = function () {
+      var posts = groups.map(function (group) { return group.dataset.post; });
+      if (posts.length === 1) return refresh(posts[0]);
+      return rpc('reaction_summary', {}).then(function (rows) {
+        posts.forEach(function (post) { counts[post] = {}; });
+        (rows || []).forEach(function (row) {
+          if (counts[row.post]) counts[row.post][row.kind] = Number(row.count);
+        });
+        renderAll();
+      }).catch(function () {
+        posts.forEach(refresh);
+      });
+    };
+
+    groups.forEach(function (group) {
+      var post = group.dataset.post;
+      Array.prototype.forEach.call(group.querySelectorAll('[data-kind]'), function (button) {
+        button.addEventListener('click', function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          var kind = button.dataset.kind;
+          var own = counts[post] = counts[post] || {};
+          var previous = state.picks[post] || null;
+          var next = previous === kind ? null : kind; // tap again to remove
+          if (previous) own[previous] = Math.max(0, (own[previous] || 0) - 1);
+          if (next) {
+            own[next] = (own[next] || 0) + 1;
+            state.picks[post] = next;
+          } else {
+            delete state.picks[post];
+          }
+          save();
+          renderAll();
+          if (remote) {
+            rpc('react', { p_post: post, p_voter: state.voter, p_kind: next })
+              .then(function () { return refresh(post); }).catch(function () {});
+          }
+        });
       });
     });
 
-    render();
-    if (remote) refresh();
+    renderAll();
+    if (remote) refreshAll();
   }
 })();

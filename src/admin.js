@@ -292,11 +292,19 @@
   };
 
   // Switch the form between a post and the about page.
-  var showAbout = function (on) {
-    Array.prototype.forEach.call(document.querySelectorAll('.post-only'), function (el) { el.hidden = on; });
-    Array.prototype.forEach.call(document.querySelectorAll('.about-only'), function (el) { el.hidden = !on; });
-    if (on) $('delete').hidden = true;
+  // Switch the form between a post, the about page and the site settings.
+  var showSection = function (name) {
+    ['post', 'about', 'settings'].forEach(function (section) {
+      Array.prototype.forEach.call(document.querySelectorAll('.' + section + '-only'), function (el) {
+        el.hidden = section !== name;
+      });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.text-block'), function (el) {
+      el.hidden = name === 'settings';
+    });
+    if (name !== 'post') $('delete').hidden = true;
   };
+  var showAbout = function (on) { showSection(on ? 'about' : 'post'); };
 
   // Background and text colour controls.
   var showBackground = function () {
@@ -339,7 +347,7 @@
   // Rebuild the "Post" list from state.posts.
   var listPosts = function () {
     var select = $('post');
-    while (select.options.length > 2) select.remove(2); // keep "New post" and "About page"
+    while (select.options.length > 3) select.remove(3); // keep "New post", "About page", "Site settings"
     state.posts.forEach(function (post) {
       var option = document.createElement('option');
       option.value = post.slug;
@@ -357,6 +365,7 @@
     state.removed = [];
     state.flags = { background: null, banner: null };
     state.about = null;
+    state.settings = null;
     openDetails = {};
     $('preview').hidden = true;
     state.slugTouched = false;
@@ -459,6 +468,7 @@
     if (!slug) return;
     status('Loading…');
     if (slug === '@about') return loadAbout();
+    if (slug === '@settings') return loadSettings();
     var path = '/contents/content/posts/' + encodeURIComponent(slug) + '/post.md?ref=' +
       encodeURIComponent($('branch').value.trim() || 'main');
     var folderPath = '/contents/content/posts/' + encodeURIComponent(slug) + '?ref=' +
@@ -583,9 +593,65 @@
     });
   };
 
+  /* ---------------- site settings ---------------- */
+
+  // Options shown as checkboxes: element id -> key in site.json "options".
+  var OPTIONS = { 'opt-home-reactions': 'home_reactions' };
+
+  var loadSettings = function () {
+    var ref = '?ref=' + encodeURIComponent($('branch').value.trim() || 'main');
+    gh('/contents/content/site.json' + ref).then(function (file) {
+      var site = JSON.parse(decode(file));
+      state.settings = { site: site };
+      Object.keys(OPTIONS).forEach(function (id) {
+        $(id).checked = !!(site.options && site.options[OPTIONS[id]]);
+      });
+      showSection('settings');
+      labelPublish();
+      status('');
+    }).catch(function (error) {
+      $('post').value = '';
+      showSection('post');
+      status(error.message, true);
+    });
+  };
+
+  var publishSettings = function () {
+    if (!$('token').value.trim()) {
+      $('settings').open = true;
+      return status('Set the access token under Connection.', true);
+    }
+    var site = state.settings.site;
+    site.options = site.options || {};
+    Object.keys(OPTIONS).forEach(function (id) { site.options[OPTIONS[id]] = $(id).checked; });
+    var branch = $('branch').value.trim() || 'main';
+    var head;
+    $('publish').disabled = true;
+    status('Saving…');
+    gh('/git/ref/heads/' + encodeURIComponent(branch)).then(function (ref) {
+      head = ref.object.sha;
+      return gh('/git/commits/' + head);
+    }).then(function (commit) {
+      return gh('/git/trees', 'POST', { base_tree: commit.tree.sha, tree: [
+        { path: 'content/site.json', mode: '100644', type: 'blob', content: JSON.stringify(site, null, 2) + '\n' }
+      ] });
+    }).then(function (tree) {
+      return gh('/git/commits', 'POST', { message: 'Update site settings', tree: tree.sha, parents: [head] });
+    }).then(function (commit) {
+      return gh('/git/refs/heads/' + encodeURIComponent(branch), 'PATCH', { sha: commit.sha });
+    }).then(function () {
+      status('Saved. The site updates in about a minute.');
+    }).catch(function (error) {
+      status(error.message, true);
+    }).then(function () {
+      $('publish').disabled = false;
+    });
+  };
+
   /* ---------------- publish ---------------- */
 
   $('publish').addEventListener('click', function () {
+    if (state.settings) return publishSettings();
     if (state.about) return publishAbout();
     var title = $('title').value.trim().replace(/\s+/g, ' ');
     var slug = state.editing ? state.editing.slug : slugify($('slug').value);

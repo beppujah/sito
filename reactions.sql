@@ -51,3 +51,18 @@ revoke all on function public.react(text, uuid, text) from public;
 revoke all on function public.reaction_counts(text) from public;
 grant execute on function public.react(text, uuid, text) to anon;
 grant execute on function public.reaction_counts(text) to anon;
+
+-- Totals for every post at once (home page reactions). Optional: without it
+-- the site asks post by post.
+create or replace function public.reaction_summary()
+returns table (post text, kind text, count bigint)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select r.post, r.kind, count(*) from public.reactions r group by r.post, r.kind;
+$$;
+
+revoke all on function public.reaction_summary() from public;
+grant execute on function public.reaction_summary() to anon;

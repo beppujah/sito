@@ -54,8 +54,8 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 :focus-visible { outline: 1px solid currentColor; outline-offset: 3px; }
 
 /* ---------------------------------------------------------------
-   Corner icons: always visible. "difference" blending keeps them white
-   over dark images and turns them dark over light ones and the page.
+   Corner icons: always visible, plain white over the photos; on the
+   pages they take the text colour.
    --------------------------------------------------------------- */
 .corner {
   position: fixed;
@@ -66,7 +66,6 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   display: grid;
   place-items: center;
   color: #fff;
-  mix-blend-mode: difference;
 }
 .corner-left { left: max(0.6rem, env(safe-area-inset-left)); }
 .corner-right { right: max(0.6rem, env(safe-area-inset-right)); }
@@ -74,6 +73,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 
 /* On the home page the icons sit in the corners of the centred column. */
 .home .corner-left { left: max(0.6rem, env(safe-area-inset-left), calc(50% - var(--column) / 2 + 0.6rem)); }
+.page .corner { color: var(--post-ink, var(--auto-ink, var(--ink))); }
 .home .corner-right { right: max(0.6rem, env(safe-area-inset-right), calc(50% - var(--column) / 2 + 0.6rem)); }
 
 /* The mode button shows the view it switches to: full -> grid -> index -> full. */
@@ -98,6 +98,9 @@ html[data-mode] { scrollbar-width: none; background: #000; }
 html[data-mode] body { background: #000; color: #fff; }
 html[data-mode]::-webkit-scrollbar { display: none; }
 html[data-mode="full"] { scroll-snap-type: y mandatory; }
+/* Touch screens: the script snaps to the photo itself, faster than the
+   browser does, so a tap right after a swipe opens the post. */
+html.touch-paging[data-mode="full"] { scroll-snap-type: none; }
 
 .feed {
   width: var(--column);
@@ -113,6 +116,44 @@ html[data-mode="full"] { scroll-snap-type: y mandatory; }
   background: #111 var(--spinner) center / 22px no-repeat;
 }
 
+.item-link { display: block; width: 100%; height: 100%; }
+
+/* Reactions over the photos (option "home_reactions"): all of them on the
+   right in full screen, only the most chosen one in the grid. */
+.item-reactions, .item-top { display: none; }
+html[data-mode="full"] .item-reactions {
+  position: absolute;
+  right: 0.55rem;
+  bottom: max(1.25rem, env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+}
+.item-reactions .reaction {
+  width: 44px;
+  padding-block: 0.2rem;
+  color: #fff;
+}
+.item-reactions .reaction svg { width: 25px; height: 25px; }
+.item-reactions .reaction[aria-pressed="true"] { color: #fff; }
+.item-reactions .reaction[aria-pressed="true"] svg { stroke-width: 2.1; }
+.item-reactions .reaction .count { min-height: 0; color: #fff; font-size: 0.68rem; }
+html[data-mode="grid"] .item-top:not(:empty) {
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0.45rem;
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  color: #fff;
+  font-size: 0.7rem;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+.item-top svg { width: 15px; height: 15px; }
+
 /* Titles: hidden, shown small on hover in the grid (devices with a mouse). */
 .item-title { display: none; }
 @media (hover: hover) {
@@ -120,12 +161,11 @@ html[data-mode="full"] { scroll-snap-type: y mandatory; }
     display: block;
     position: absolute;
     left: 0.7rem;
-    right: 0.7rem;
+    right: 3rem;
     bottom: 0.6rem;
     font-size: 0.75rem;
     line-height: 1.3;
     color: #fff;
-    mix-blend-mode: difference;
     opacity: 0;
     transition: opacity 0.2s;
   }

@@ -99,6 +99,11 @@ to 2400 px before upload.
 - **bg** and **banner** next to an image in the media list pick the background
   and the banner (one each, or none). **Font** picks the post's font.
 - **About page** in the Post list edits the about text and the contact links.
+- **Site settings** in the Post list holds options for the whole site, saved
+  in `content/site.json` under `options`. `home_reactions`: reactions over the
+  home page photos (all of them on the right in full screen, the most chosen one
+  in the grid). For one request instead of one per post, run the
+  `reaction_summary` part of `reactions.sql` in Supabase.
 - The **x** next to a media file takes it out of the post and out of the text;
   files already published are deleted when you press Publish.
 - **Delete post** (two taps) removes the post folder. Earlier versions remain

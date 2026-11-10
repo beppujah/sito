@@ -634,12 +634,24 @@ SIZES_FULL = "(min-width: 768px) 75vh, 100vw"  # home, full screen (app.js switc
 
 
 def home_page(site, posts, version):
+    with_reactions = bool((site.get("options") or {}).get("home_reactions"))
     if posts:
+        def overlay(p):
+            if not with_reactions:
+                return ""
+            buttons = "".join(
+                f'<button class="reaction" type="button" data-kind="{kind}" aria-pressed="false" '
+                f'aria-label="{kind.capitalize()}">{ICONS[kind]}<span class="count"></span></button>'
+                for kind in REACTIONS
+            )
+            return (f'<div class="item-reactions" data-post="{esc(p["slug"])}" role="group" '
+                    f'aria-label="Reactions to {esc(p["title"])}">{buttons}</div>'
+                    '<span class="item-top" aria-hidden="true"></span>')
         items = "\n".join(
-            f'<a class="item" href="posts/{quote(p["slug"])}/">'
+            f'<div class="item"><a class="item-link" href="posts/{quote(p["slug"])}/">'
             + img_tag(p["cover"], p["title"], p["folder"], lazy=index > 0, sizes=SIZES_FULL,
                       prefix=f'posts/{quote(p["slug"])}/')
-            + f'<span class="item-title" aria-hidden="true">{esc(p["title"])}</span></a>'
+            + f'<span class="item-title" aria-hidden="true">{esc(p["title"])}</span></a>{overlay(p)}</div>'
             for index, p in enumerate(posts)
         )
         rows = "\n".join(
@@ -664,8 +676,16 @@ def home_page(site, posts, version):
     head = ('<script>document.documentElement.dataset.mode='
             '{"#grid":"grid","#index":"index"}[location.hash]||"full"</script>\n')
     image = f'posts/{quote(posts[0]["slug"])}/{quote(posts[0]["cover"])}' if posts else ""
+    foot = reactions_config(site) if with_reactions else ""
     return page(site, title="", description=site["description"], root="", body=body,
-                body_class="home", version=version, image=image, head=head)
+                body_class="home", version=version, image=image, head=head, foot=foot)
+
+
+def reactions_config(site):
+    config = site.get("reactions") or {}
+    return "<script>window.SITE_REACTIONS=" + json.dumps(
+        {"url": config.get("supabase_url", "").rstrip("/"), "key": config.get("supabase_anon_key", "")}
+    ) + "</script>\n"
 
 
 def reactions_html(slug):
@@ -728,10 +748,7 @@ def post_page(site, post, version):
 </article>
 {reactions_html(post["slug"])}
 </main>"""
-    config = site.get("reactions") or {}
-    foot = "<script>window.SITE_REACTIONS=" + json.dumps(
-        {"url": config.get("supabase_url", "").rstrip("/"), "key": config.get("supabase_anon_key", "")}
-    ) + "</script>\n"
+    foot = reactions_config(site)
     slug = quote(post["slug"])
     return page(site, title=post["title"], description=post["description"], root="../../", body=body,
                 body_class=body_class, version=version, path=f"posts/{slug}/",
@@ -785,7 +802,7 @@ def admin_page(site, version):
 <label>Access token<input id="token" type="password" autocomplete="off"></label>
 <p class="hint">A fine-grained GitHub token limited to this repository, with read and write access to Contents. It is kept in this browser only and sent only to api.github.com.</p>
 </details>
-<label>Post<select id="post"><option value="">New post</option><option value="@about">About page</option></select></label>
+<label>Post<select id="post"><option value="">New post</option><option value="@about">About page</option><option value="@settings">Site settings</option></select></label>
 <div class="post-only">
 <label>Title<input id="title" autocomplete="off"></label>
 <label>Date<input id="date" type="date"></label>
@@ -794,8 +811,13 @@ def admin_page(site, version):
 <label>Cover image (home page)<input id="cover" type="file" accept="image/*"></label>
 <p class="hint" id="cover-note"></p>
 </div>
+<div class="text-block">
 <label>Text<textarea id="text" rows="14"></textarea></label>
 <p class="hint">Blank line for a new paragraph. **bold**, [link text](https://…), ## heading. A YouTube or Vimeo link on its own line becomes a player. Use "text" next to a file below for its description and caption.</p>
+</div>
+<div class="settings-only" hidden>
+<label class="check"><input id="opt-home-reactions" type="checkbox">Reactions on the home page: all of them on the right of each photo in full screen, the most chosen one on each photo in the grid</label>
+</div>
 <div class="about-only" hidden>
 <label>Contact links, one per line: label | address<textarea id="contacts" rows="5" autocapitalize="off"></textarea></label>
 <p class="hint">For example: Email | mailto:name@example.com</p>
