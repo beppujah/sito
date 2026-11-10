@@ -1,3 +1,7 @@
+---
+title: About
+---
+
 This website is an attempt to make a record of my work in a safe and comfortable environment, but also a place to post some randomness.
 
 The app that runs the site is made with Claude LLM and it’s code is avaliable at the  github repository [github.com/beppujah/sito](https://github.com/beppujah/sito)

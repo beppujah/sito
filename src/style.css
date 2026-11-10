@@ -267,6 +267,7 @@ h2 { margin: 2.5rem auto 0.6rem; font-size: 1.25rem; font-weight: 600; line-heig
 h3 { margin: 2rem auto 0.5rem; font-size: 1rem; font-weight: 600; }
 p, ul { margin-block: 0 1.1rem; }
 .post-body > ul { padding-left: 2.5rem; }
+.post-body > ul.links { padding-left: 1.25rem; }
 
 time { color: var(--muted); font-size: 0.85rem; }
 .post-body { margin-top: 2rem; }

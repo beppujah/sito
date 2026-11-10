@@ -14,7 +14,7 @@ turns the `content/` folder into a static site.
 ```
 content/
   site.json          site title, address, repository, contact links, reactions backend
-  about.md           text of the about page
+  about/             the about page: post.md (title, text, looks) and its media
   posts/<name>/      one folder per post
     post.md          title, date, cover + text
     cover.jpg        cover photo
@@ -98,7 +98,9 @@ to 2400 px before upload.
 - **Pinned to the top** keeps the post first on the home page.
 - **bg** and **banner** next to an image in the media list pick the background
   and the banner (one each, or none). **Font** picks the post's font.
-- **About page** in the Post list edits the about text and the contact links.
+- **About page** in the Post list edits the about page like a post (title, text,
+  media, background, banner, font, text colour, no cover or date) and the
+  contact links.
 - **All posts** in the Post list hides, shows or deletes several posts at once,
   in a single save.
 - **Site settings** in the Post list holds options for the whole site, saved

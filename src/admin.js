@@ -315,10 +315,15 @@
   // Switch the form between a post and the about page.
   // Switch the form between a post, the about page and the site settings.
   var showSection = function (name) {
+    // The about page uses the post form too, without cover, date, address,
+    // hidden and pinned, and with the contact links.
     ['post', 'about', 'settings', 'bulk'].forEach(function (section) {
       Array.prototype.forEach.call(document.querySelectorAll('.' + section + '-only'), function (el) {
-        el.hidden = section !== name;
+        el.hidden = !(section === name || (section === 'post' && name === 'about'));
       });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('.not-about'), function (el) {
+      el.hidden = name === 'about';
     });
     Array.prototype.forEach.call(document.querySelectorAll('.text-block'), function (el) {
       el.hidden = name === 'settings' || name === 'bulk';
@@ -335,8 +340,9 @@
     $('bg-color-row').hidden = style !== 'color';
     var key = state.flags.background;
     $('bg-note').textContent = image
-      ? 'Image: ' + (key && key !== '@cover' ? key : (coverName() || 'the cover') + ' (the cover)') +
-        '. The post opens on it; a tap shows the text.'
+      ? (key && key !== '@cover' ? 'Image: ' + key + '.'
+        : coverName() ? 'Image: ' + coverName() + ' (the cover). Pick another with "bg" in the list above.'
+        : 'Pick the image with "bg" in the list above.')
       : '';
   };
   $('bg-style').addEventListener('change', function () {
@@ -490,16 +496,39 @@
     reset();
     if (!slug) return;
     status('Loading…');
-    if (slug === '@about') return loadAbout();
+    if (slug === '@about') return loadEntry('about', 'content/about');
     if (slug === '@settings') return loadSettings();
     if (slug === '@bulk') return loadBulk();
-    var path = '/contents/content/posts/' + encodeURIComponent(slug) + '/post.md?ref=' +
-      encodeURIComponent($('branch').value.trim() || 'main');
-    var folderPath = '/contents/content/posts/' + encodeURIComponent(slug) + '?ref=' +
-      encodeURIComponent($('branch').value.trim() || 'main');
-    Promise.all([gh(path), gh(folderPath)]).then(function (found) {
+    loadEntry(slug, 'content/posts/' + slug);
+  });
+
+  // Load a post, or the about page (base "content/about"), into the form.
+  var loadEntry = function (slug, base) {
+    var about = base === 'content/about';
+    var ref = '?ref=' + encodeURIComponent($('branch').value.trim() || 'main');
+    var path = '/contents/' + base.split('/').map(encodeURIComponent).join('/');
+    var legacy = false;
+    Promise.all([
+      gh(path + '/post.md' + ref).catch(function (error) {
+        if (!about) throw error;
+        legacy = true; // older layout: the about text alone in content/about.md
+        return gh('/contents/content/about.md' + ref).then(function (file) {
+          return { content: btoa(unescape(encodeURIComponent('---\ntitle: About\n---\n\n' + decode(file)))) };
+        }).catch(function () { return { content: btoa('---\ntitle: About\n---\n\n') }; });
+      }),
+      gh(path + ref).catch(function () { return []; }),
+      about ? gh('/contents/content/site.json' + ref) : null
+    ]).then(function (found) {
       var parsed = parsePost(decode(found[0]));
-      state.editing = { slug: slug, cover: parsed.meta.cover || '', meta: parsed.meta };
+      state.editing = { slug: slug, cover: about ? '' : parsed.meta.cover || '', meta: parsed.meta,
+        folder: base + '/', about: about, legacy: legacy };
+      if (about) {
+        state.about = { site: JSON.parse(decode(found[2])) };
+        $('contacts').value = (state.about.site.contact || []).map(function (link) {
+          return link.label + ' | ' + link.url;
+        }).join('\n');
+        showSection('about');
+      }
       $('title').value = parsed.meta.title || '';
       $('date').value = (parsed.meta.date || today()).slice(0, 10);
       $('slug').value = slug;
@@ -531,13 +560,13 @@
       showBackground();
       showTextColor();
       $('font').value = /^(oswald|typewriter)$/.test(parsed.meta.font || '') ? parsed.meta.font : 'helvetica';
-      $('delete').hidden = false;
+      $('delete').hidden = about;
       if (isTrue(parsed.meta.draft)) {
         $('preview').href = '../posts/' + slug + '/';
         $('preview').hidden = false;
       }
       labelPublish();
-      $('cover-note').textContent = 'Current cover: ' + state.editing.cover + '. Choose a file only to replace it.';
+      if (!about) $('cover-note').textContent = 'Current cover: ' + state.editing.cover + '. Choose a file only to replace it.';
       state.existing = (Array.isArray(found[1]) ? found[1] : []).filter(function (entry) {
         return entry.type === 'file' && entry.name !== 'post.md' && entry.name !== state.editing.cover;
       }).map(function (entry) { return { name: entry.name, size: entry.size }; });
@@ -546,39 +575,15 @@
       status('');
     }).catch(function (error) {
       $('post').value = '';
-      status(error.message, true);
-    });
-  });
-
-  /* ---------------- about page ---------------- */
-
-  var loadAbout = function () {
-    var ref = '?ref=' + encodeURIComponent($('branch').value.trim() || 'main');
-    Promise.all([
-      gh('/contents/content/about.md' + ref).catch(function () { return null; }),
-      gh('/contents/content/site.json' + ref)
-    ]).then(function (found) {
-      var site = JSON.parse(decode(found[1]));
-      state.about = { site: site };
-      showAbout(true);
-      $('text').value = found[0] ? decode(found[0]).trim() : '';
-      $('contacts').value = (site.contact || []).map(function (link) {
-        return link.label + ' | ' + link.url;
-      }).join('\n');
-      labelPublish();
-      status('');
-    }).catch(function (error) {
-      $('post').value = '';
-      showAbout(false);
+      showSection('post');
       status(error.message, true);
     });
   };
 
-  var publishAbout = function () {
-    if (!$('token').value.trim()) {
-      $('settings').open = true;
-      return status('Set the access token under Connection.', true);
-    }
+  /* ---------------- about page ---------------- */
+
+  // Contact links from the "label | address" lines.
+  var readContacts = function () {
     var contacts = [];
     var bad = '';
     $('contacts').value.split('\n').forEach(function (line) {
@@ -589,32 +594,7 @@
       if (!label || !url) bad = bad || line.trim();
       else contacts.push({ label: label, url: url });
     });
-    if (bad) return status('This contact line needs "label | address": ' + bad, true);
-    var site = state.about.site;
-    site.contact = contacts;
-    var branch = $('branch').value.trim() || 'main';
-    var head;
-    $('publish').disabled = true;
-    status('Saving…');
-    gh('/git/ref/heads/' + encodeURIComponent(branch)).then(function (ref) {
-      head = ref.object.sha;
-      return gh('/git/commits/' + head);
-    }).then(function (commit) {
-      return gh('/git/trees', 'POST', { base_tree: commit.tree.sha, tree: [
-        { path: 'content/about.md', mode: '100644', type: 'blob', content: $('text').value.trim() + '\n' },
-        { path: 'content/site.json', mode: '100644', type: 'blob', content: JSON.stringify(site, null, 2) + '\n' }
-      ] });
-    }).then(function (tree) {
-      return gh('/git/commits', 'POST', { message: 'Update about page', tree: tree.sha, parents: [head] });
-    }).then(function (commit) {
-      return gh('/git/refs/heads/' + encodeURIComponent(branch), 'PATCH', { sha: commit.sha });
-    }).then(function () {
-      status('Published. The about page updates in about a minute.');
-    }).catch(function (error) {
-      status(error.message, true);
-    }).then(function () {
-      $('publish').disabled = false;
-    });
+    return bad ? { error: 'This contact line needs "label | address": ' + bad } : { contacts: contacts };
   };
 
   /* ---------------- all posts: hide, show, delete ---------------- */
@@ -801,8 +781,8 @@
 
   $('publish').addEventListener('click', function () {
     if (state.settings) return publishSettings();
-    if (state.about) return publishAbout();
-    var title = $('title').value.trim().replace(/\s+/g, ' ');
+    var about = !!(state.editing && state.editing.about);
+    var title = $('title').value.trim().replace(/\s+/g, ' ') || (about ? 'About' : '');
     var slug = state.editing ? state.editing.slug : slugify($('slug').value);
     var date = $('date').value || today();
     var branch = $('branch').value.trim() || 'main';
@@ -810,6 +790,8 @@
       !$('repo').value.trim() ? 'Set the repository under Connection.' :
       !$('token').value.trim() ? 'Set the access token under Connection.' :
       !title ? 'The post needs a title.' :
+      about && /^(faded|bw|difference)$/.test($('bg-style').value) && !state.flags.background
+        ? 'Pick the background image with "bg" in the media list.' :
       !slug ? 'The post needs an address.' :
       !state.editing && !state.cover ? 'Choose a cover image.' :
       !state.editing && state.posts.some(function (p) { return p.slug === slug; })
@@ -820,11 +802,13 @@
       return;
     }
 
-    var folder = 'content/posts/' + slug + '/';
+    var contacts = about ? readContacts() : null;
+    if (contacts && contacts.error) return status(contacts.error, true);
+    var folder = state.editing && state.editing.folder || 'content/posts/' + slug + '/';
     var coverName = state.cover ? state.cover.name : state.editing.cover;
-    var hidden = $('hidden').checked;
-    var pinned = $('pinned').checked;
-    var front = ['title: ' + title, 'date: ' + date, 'cover: ' + coverName];
+    var hidden = !about && $('hidden').checked;
+    var pinned = !about && $('pinned').checked;
+    var front = about ? ['title: ' + title] : ['title: ' + title, 'date: ' + date, 'cover: ' + coverName];
     if (hidden) front.push('draft: true');
     if (pinned) front.push('pinned: true');
     var bgStyle = $('bg-style').value;
@@ -859,6 +843,12 @@
       var replaced = uploads.some(function (item) { return item.name === name; });
       if (!replaced) tree.push({ path: folder + name, mode: '100644', type: 'blob', sha: null });
     });
+    if (about) {
+      var site = state.about.site;
+      site.contact = contacts.contacts;
+      tree.push({ path: 'content/site.json', mode: '100644', type: 'blob', content: JSON.stringify(site, null, 2) + '\n' });
+      if (state.editing.legacy) tree.push({ path: 'content/about.md', mode: '100644', type: 'blob', sha: null });
+    }
 
     $('publish').disabled = true;
     var head;
@@ -885,13 +875,18 @@
       });
     }).then(function (created) {
       return gh('/git/commits', 'POST', {
-        message: (state.editing ? 'Update post: ' : 'Add post: ') + title,
+        message: about ? 'Update about page' : (state.editing ? 'Update post: ' : 'Add post: ') + title,
         tree: created.sha,
         parents: [head]
       });
     }).then(function (commit) {
       return gh('/git/refs/heads/' + encodeURIComponent(branch), 'PATCH', { sha: commit.sha });
     }).then(function () {
+      if (about) {
+        $('post').value = '';
+        reset();
+        return status('Published. The about page updates in about a minute.');
+      }
       state.posts = state.posts.filter(function (post) { return post.slug !== slug; });
       state.posts.unshift({ slug: slug, title: title, date: date, cover: coverName, hidden: hidden, pinned: pinned });
       listPosts();

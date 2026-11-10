@@ -496,6 +496,45 @@ def load_site():
     return site
 
 
+def page_looks(folder, meta, cover=""):
+    """Background, banner, text colour and font of a post or of the about page."""
+    # background / banner: a file of the folder, or "true" for the cover.
+    # background can also be a solid colour such as #1d2a33.
+    def pick(key):
+        value = meta.get(key, "")
+        if not value or value.lower() in ("false", "no", "0", "none"):
+            return ""
+        if key == "background" and HEX_COLOR.match(value):
+            return value
+        name = cover if value.lower() in TRUE else value
+        if not name or not (folder / name).exists():
+            warn(f"{folder.name}: {key} image {name or '(none)'} not found, ignored")
+            return ""
+        return name
+    bg_style = meta.get("background-style", "").lower()
+    text_color = meta.get("text-color", "")
+    font = meta.get("font", "").lower()
+    return {
+        "background": pick("background"),
+        "banner": pick("banner"),
+        "bg_style": bg_style if bg_style in BG_STYLES else "faded",
+        "text_color": text_color if HEX_COLOR.match(text_color) else "",
+        "font": font if font in FONTS else "helvetica",
+    }
+
+
+def load_about():
+    """The about page: content/about/post.md with its own media (or the older content/about.md)."""
+    folder = CONTENT / "about"
+    source = folder / "post.md"
+    if not source.exists():
+        legacy = CONTENT / "about.md"
+        return {"title": "About", "body": legacy.read_text("utf-8") if legacy.exists() else "", "folder": None,
+                **page_looks(folder, {})}
+    meta, body = split_front_matter(source.read_text("utf-8"))
+    return {"title": meta.get("title") or "About", "body": body, "folder": folder, **page_looks(folder, meta)}
+
+
 def load_posts():
     posts = []
     if not POSTS.exists():
@@ -515,29 +554,7 @@ def load_posts():
         if not cover or not (folder / cover).exists():
             warn(f"{folder.name}: cover image missing, skipped")
             continue
-        # background / banner: a file of the post folder, or "true" for the cover.
-        # background can also be a solid colour such as #1d2a33.
-        def pick(key):
-            value = meta.get(key, "")
-            if not value or value.lower() in ("false", "no", "0", "none"):
-                return ""
-            if key == "background" and HEX_COLOR.match(value):
-                return value
-            name = cover if value.lower() in TRUE else value
-            if not (folder / name).exists():
-                warn(f"{folder.name}: {key} image {name} not found, ignored")
-                return ""
-            return name
-        background, banner = pick("background"), pick("banner")
-        bg_style = meta.get("background-style", "").lower()
-        if bg_style not in BG_STYLES:
-            bg_style = "faded"
-        text_color = meta.get("text-color", "")
-        if not HEX_COLOR.match(text_color):
-            text_color = ""
-        font = meta.get("font", "").lower()
-        if font not in FONTS:
-            font = "helvetica"
+        looks = page_looks(folder, meta, cover)
         try:
             date = datetime.date.fromisoformat(meta.get("date", "")[:10])
         except ValueError:
@@ -554,11 +571,7 @@ def load_posts():
                 "folder": folder,
                 "hidden": hidden,
                 "pinned": pinned,
-                "background": background,
-                "banner": banner,
-                "bg_style": bg_style,
-                "text_color": text_color,
-                "font": font,
+                **looks,
             }
         )
     # Pinned posts first, then newest first.
@@ -681,33 +694,40 @@ def reactions_html(slug):
     )
 
 
-def post_page(site, post, version):
-    date = post["date"]
-    cover = quote(post["cover"])
-    folder = post["folder"]
-    body_class = f"page font-{post['font']}"
+def apply_looks(item, version, root):
+    """Classes, inline style, head tags, background and banner blocks for a page's looks."""
+    folder = item["folder"]
+    body_class = f"page font-{item['font']}"
     style = []
     head = ""
-    if post["font"] != "helvetica":
-        head += f'<link rel="stylesheet" href="../../assets/fonts/fonts.css?v={version}">\n'
+    if item["font"] != "helvetica":
+        head += f'<link rel="stylesheet" href="{root}assets/fonts/fonts.css?v={version}">\n'
     intro = ""
-    background = post["background"]
-    text_color = post["text_color"]
+    background = item["background"]
+    text_color = item["text_color"]
     if background and HEX_COLOR.match(background):
-        # Solid colour: the text shows straight away.
+        # Solid colour.
         body_class += " bg-color"
         style.append(f"--page-bg:{background}")
         text_color = text_color or ("#ffffff" if is_dark(background) else "#111111")
     elif background:
         # The image fills the screen behind the text, in the chosen style.
         intro = f'<div class="post-bg" aria-hidden="true">{img_tag(background, "", folder, lazy=False, sizes="100vw")}</div>\n'
-        body_class += f" has-bg bg-{post['bg_style']}"
+        body_class += f" has-bg bg-{item['bg_style']}"
     if text_color:
         style.append(f"--post-ink:{text_color}")
     banner_block = ""
-    if post["banner"]:
-        banner_block = f'<div class="post-banner">{img_tag(post["banner"], "", folder, lazy=False)}</div>\n'
+    if item["banner"]:
+        banner_block = f'<div class="post-banner">{img_tag(item["banner"], "", folder, lazy=False)}</div>\n'
         body_class += " has-banner"
+    return body_class, style, head, intro, banner_block
+
+
+def post_page(site, post, version):
+    date = post["date"]
+    cover = quote(post["cover"])
+    folder = post["folder"]
+    body_class, style, head, intro, banner_block = apply_looks(post, version, "../../")
     body = f"""<a class="corner corner-left" href="../../" data-back aria-label="Back to the posts">{ICONS["back"]}</a>
 {intro}<main id="post">
 <article class="post">
@@ -729,22 +749,27 @@ def post_page(site, post, version):
                 robots="noindex" if post["hidden"] else "")
 
 
-def about_page(site, version):
-    source = CONTENT / "about.md"
-    text = render_markdown(source.read_text("utf-8")) if source.exists() else ""
+def about_page(site, about, version):
+    body_class, style, head, intro, banner_block = apply_looks(about, version, "../")
     links = "".join(
         f'<li><a href="{esc(link.get("url", ""))}">{esc(link.get("label", ""))}</a></li>'
         for link in site.get("contact", [])
     )
     contact = f'<h2 id="contact">Contact</h2>\n<ul class="links">{links}</ul>' if links else ""
     body = f"""<a class="corner corner-left" href="../" data-back aria-label="Back to the posts">{ICONS["back"]}</a>
-<main class="prose">
-<h1>About</h1>
-{text}
+{intro}<main id="post">
+<article class="post">
+{banner_block}<header class="post-head">
+<h1>{esc(about["title"])}</h1>
+</header>
+<div class="post-body">
+{render_markdown(about["body"], about["folder"])}
 {contact}
+</div>
+</article>
 </main>"""
-    return page(site, title="About", description=site["description"], root="../", body=body,
-                body_class="page", version=version, path="about/")
+    return page(site, title=about["title"], description=site["description"], root="../", body=body,
+                body_class=body_class, version=version, path="about/", head=head, body_style=";".join(style))
 
 
 def not_found_page(site, version):
@@ -778,11 +803,13 @@ def admin_page(site, version):
 <label>Post<select id="post"><option value="">New post</option><option value="@about">About page</option><option value="@settings">Site settings</option><option value="@bulk">All posts: hide, show, delete</option></select></label>
 <div class="post-only">
 <label>Title<input id="title" autocomplete="off"></label>
+<div class="not-about">
 <label>Date<input id="date" type="date"></label>
 <label>Address<input id="slug" autocapitalize="off" autocomplete="off"></label>
 <p class="hint" id="slug-note"></p>
 <label>Cover image (home page)<input id="cover" type="file" accept="image/*"></label>
 <p class="hint" id="cover-note"></p>
+</div>
 </div>
 <div class="text-block">
 <label>Text<textarea id="text" rows="14"></textarea></label>
@@ -821,8 +848,10 @@ def admin_page(site, version):
 <option value="custom">Custom</option>
 </select></label>
 <label id="text-color-row" hidden>Custom text colour<input id="text-color" type="color" value="#111111"></label>
+<div class="not-about">
 <label class="check"><input id="hidden" type="checkbox">Hidden (draft): saved, but not shown on the site</label>
 <label class="check"><input id="pinned" type="checkbox">Pinned to the top</label>
+</div>
 </div>
 <div class="bulk-only" hidden>
 <p class="hint">Tick the posts, then choose what to do. Everything happens in one save.</p>
@@ -944,7 +973,10 @@ def build():
 
     write(OUT / "index.html", home_page(site, posts, version))
     write(OUT / "feed.xml", feed_xml(site, posts))
-    write(OUT / "about" / "index.html", about_page(site, version))
+    about = load_about()
+    if about["folder"]:
+        publish_files(about["folder"], OUT / "about")
+    write(OUT / "about" / "index.html", about_page(site, about, version))
     write(OUT / "404.html", not_found_page(site, version))
     write(OUT / "admin" / "index.html", admin_page(site, version))
     shutil.copy2(SRC / "admin.js", OUT / "admin" / "admin.js")
