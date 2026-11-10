@@ -604,6 +604,13 @@
     list.textContent = '';
     state.posts.forEach(function (post) {
       var row = document.createElement('li');
+      row.dataset.slug = post.slug;
+      var handle = document.createElement('button');
+      handle.type = 'button';
+      handle.className = 'handle';
+      handle.setAttribute('aria-label', 'Move ' + post.title + ' (drag, or arrow keys)');
+      handle.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 8h14M5 12h14M5 16h14" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>';
+      row.appendChild(handle);
       var label = document.createElement('label');
       label.className = 'check';
       var box = document.createElement('input');
@@ -616,7 +623,91 @@
       list.appendChild(row);
     });
     if (!state.posts.length) list.textContent = 'No posts.';
+    $('bulk-order').disabled = true;
   };
+
+  /* Order by dragging: pointer events, so it works with a finger and a mouse. */
+  var orderChanged = function () {
+    $('bulk-order').disabled = false;
+    status('Order changed. Press "Save order" to publish it.');
+  };
+
+  (function () {
+    var list = $('bulk-list');
+    var drag = null;
+    list.addEventListener('pointerdown', function (event) {
+      var handle = event.target.closest('.handle');
+      if (!handle) return;
+      event.preventDefault();
+      var row = handle.parentNode;
+      handle.setPointerCapture(event.pointerId);
+      drag = { row: row, handle: handle, moved: false };
+      row.classList.add('dragging');
+    });
+    list.addEventListener('pointermove', function (event) {
+      if (!drag) return;
+      var rows = Array.prototype.slice.call(list.children);
+      var y = event.clientY;
+      var target = null;
+      rows.forEach(function (other) {
+        if (other === drag.row || target) return;
+        var box = other.getBoundingClientRect();
+        if (y < box.top + box.height / 2) target = other;
+      });
+      var before = target || null;
+      if (before !== drag.row.nextSibling) {
+        list.insertBefore(drag.row, before);
+        drag.moved = true;
+      }
+      // Scroll the page when dragging near the top or bottom edge.
+      if (y < 60) window.scrollBy(0, -12);
+      else if (y > window.innerHeight - 60) window.scrollBy(0, 12);
+    });
+    var stop = function () {
+      if (!drag) return;
+      drag.row.classList.remove('dragging');
+      if (drag.moved) orderChanged();
+      drag = null;
+    };
+    list.addEventListener('pointerup', stop);
+    list.addEventListener('pointercancel', stop);
+    list.addEventListener('keydown', function (event) {
+      var handle = event.target.closest('.handle');
+      if (!handle || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return;
+      event.preventDefault();
+      var row = handle.parentNode;
+      if (event.key === 'ArrowUp' && row.previousElementSibling) list.insertBefore(row, row.previousElementSibling);
+      else if (event.key === 'ArrowDown' && row.nextElementSibling) list.insertBefore(row.nextElementSibling, row);
+      else return;
+      handle.focus();
+      orderChanged();
+    });
+  })();
+
+  $('bulk-order').addEventListener('click', function () {
+    if (needToken()) return;
+    var order = Array.prototype.map.call($('bulk-list').children, function (row) { return row.dataset.slug; });
+    var ref = '?ref=' + encodeURIComponent($('branch').value.trim() || 'main');
+    bulkBusy(true);
+    $('bulk-order').disabled = true;
+    status('Saving the order…');
+    gh('/contents/content/site.json' + ref).then(function (file) {
+      var site = JSON.parse(decode(file));
+      site.order = order;
+      return commitTree([{ path: 'content/site.json', mode: '100644', type: 'blob', content: JSON.stringify(site, null, 2) + '\n' }],
+        'Reorder posts');
+    }).then(function () {
+      var bySlug = {};
+      state.posts.forEach(function (post) { bySlug[post.slug] = post; });
+      state.posts = order.map(function (slug) { return bySlug[slug]; }).filter(Boolean);
+      listPosts();
+      $('post').value = '@bulk';
+      status('Order saved. The site updates in about a minute.');
+    }).catch(function (error) {
+      $('bulk-order').disabled = false;
+      status(error.message, true);
+    }).then(function () { bulkBusy(false); });
+  });
 
   var loadBulk = function () {
     state.bulk = true;

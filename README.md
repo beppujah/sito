@@ -78,7 +78,7 @@ https://www.youtube.com/watch?v=XXXXXXXXXXX
   the default is Helvetica. Both are served from the site (`src/fonts/`, SIL Open
   Font License), not from Google.
 - The folder name is the address of the post. Do not rename it once shared.
-- Posts are ordered by date, newest first.
+- Posts are ordered by date, newest first, unless an order is set in the editor.
 
 ### From a phone (or any browser)
 
@@ -102,7 +102,9 @@ to 2400 px before upload.
   media, background, banner, font, text colour, no cover or date) and the
   contact links.
 - **All posts** in the Post list hides, shows or deletes several posts at once,
-  in a single save.
+  in a single save. Drag the handles to set the order of the posts on the site
+  (saved as `order` in `content/site.json`); pinned posts stay first and new
+  posts appear at the top until they are placed.
 - **Site settings** in the Post list holds options for the whole site, saved
   in `content/site.json` under `options`. `home_reactions`: reactions over the
   home page photos (all of them on the right in full screen, the most chosen one

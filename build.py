@@ -523,6 +523,19 @@ def page_looks(folder, meta, cover=""):
     }
 
 
+def sort_posts(posts, order):
+    """Pinned posts first; then posts not yet placed by hand (newest first);
+    then the order set in the editor (site.json "order")."""
+    rank = {slug: index for index, slug in enumerate(order)}
+    return sorted(posts, key=lambda p: (
+        not p["pinned"],
+        p["slug"] in rank,
+        rank.get(p["slug"], 0),
+        -p["date"].toordinal(),
+        p["slug"],
+    ))
+
+
 def load_about():
     """The about page: content/about/post.md with its own media (or the older content/about.md)."""
     folder = CONTENT / "about"
@@ -854,13 +867,14 @@ def admin_page(site, version):
 </div>
 </div>
 <div class="bulk-only" hidden>
-<p class="hint">Tick the posts, then choose what to do. Everything happens in one save.</p>
+<p class="hint">Tick the posts, then choose what to do. Everything happens in one save. Drag the handle (or use the arrow keys on it) to change the order of the posts on the site, then save the order. Pinned posts stay first; new posts appear at the top.</p>
 <p class="bulk-tools"><button class="flag" id="bulk-all" type="button">Select all</button> <button class="flag" id="bulk-none" type="button">Select none</button></p>
 <ul class="links" id="bulk-list"></ul>
 <div class="bulk-actions">
 <button class="button quiet" id="bulk-hide" type="button">Hide</button>
 <button class="button quiet" id="bulk-show" type="button">Show</button>
 <button class="button quiet" id="bulk-delete" type="button">Delete</button>
+<button class="button" id="bulk-order" type="button" disabled>Save order</button>
 </div>
 </div>
 <div class="actions">
@@ -945,7 +959,7 @@ def write(path, text):
 
 def build():
     site = load_site()
-    everything = load_posts()
+    everything = sort_posts(load_posts(), site.get("order") or [])
     posts = [post for post in everything if not post["hidden"]]  # hidden posts are not published
     digest = hashlib.sha1()
     for name in ("style.css", "app.js", "admin.js", "fonts/fonts.css"):
