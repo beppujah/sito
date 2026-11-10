@@ -2,7 +2,8 @@
 title: lorem ipsum
 date: 2026-11-10
 cover: cover.jpg
-font: oswald
+background: #1d2a33
+text-color: #ffffff
 ---
 
 Lorem ipsum dolor sit amet, consectetur adipiscing elit. Maecenas semper odio leo, a cursus mi bibendum et. Morbi ullamcorper ipsum nisi, a mollis nisi elementum vel. Sed ipsum nulla, vehicula aliquam dolor a, hendrerit rhoncus purus. Pellentesque accumsan nisl eget efficitur sodales. Phasellus condimentum, magna quis aliquet interdum, neque mi fringilla neque, nec interdum neque mi id nulla. Nam porttitor felis ac purus iaculis volutpat. Ut in scelerisque velit. Curabitur sollicitudin libero et congue vestibulum. Nam quis sapien placerat, ornare est id, lobortis justo. Suspendisse potenti.
