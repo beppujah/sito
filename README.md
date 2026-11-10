@@ -14,7 +14,7 @@ tree that grows as you scroll. Built with three.js, no build step.
 | `js/video.js` | Click-to-play YouTube embeds | Rarely |
 | `js/vendor/three.min.js` | three.js r128, bundled so the site has no external script dependency | No |
 | `js/tree.js` | Procedural tree generator | Only to change how the tree is drawn |
-| `js/scene.js` | three.js scene, camera and rendering | Rarely |
+| `js/scene.js` | Camera and drawing: WebGL when available, 2D canvas otherwise | Rarely |
 | `js/main.js` | Scroll progress, tree labels, hero fade | Rarely |
 
 ## Adding a menu entry

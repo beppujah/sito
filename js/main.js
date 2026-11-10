@@ -24,11 +24,14 @@
     // The page still works as a plain page; say why the tree is missing.
     root.classList.add("no-webgl");
     var note = document.getElementById("tree-error");
-    note.textContent = (window.THREE ? "3D tree unavailable: WebGL could not start in this browser. " : "3D tree unavailable: three.js did not load. ") + failure;
+    note.textContent = (window.THREE ? "Tree unavailable: the drawing could not start in this browser. " : "Tree unavailable: three.js did not load. ") + failure;
     note.hidden = false;
     if (window.console) console.error("Tree scene failed:", failure);
     return;
   }
+
+  canvas = document.getElementById("tree");   // the scene may have swapped the canvas
+  spec.textContent += " \u00b7 " + scene.mode;
 
   var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   stage.style.setProperty("--screens", reduced ? 1 : cfg.scroll.screens);

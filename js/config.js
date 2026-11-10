@@ -42,6 +42,14 @@ window.SITE_CONFIG = {
     videos: []
   },
 
+  /* ---- RENDERER -------------------------------------------------------
+   * mode: "auto"   uses WebGL when the browser supports it, otherwise 2D canvas
+   *       "canvas" always the 2D canvas renderer (works everywhere)
+   *       "webgl"  always WebGL
+   * The current renderer is shown in the bottom-left caption of the page.
+   */
+  render: { mode: "auto" },
+
   /* ---- TREE SHAPE -------------------------------------------------------
    * Units are abstract "world units": the trunk is about 3 units tall.
    */
