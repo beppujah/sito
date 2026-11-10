@@ -5,12 +5,21 @@
   "repo": "beppujah/sito",
   "branch": "main",
   "contact": [
-    { "label": "Email", "url": "mailto:you@example.com" },
-    { "label": "YouTube", "url": "https://www.youtube.com/@beppujah" },
-    { "label": "GitHub", "url": "https://github.com/beppujah" }
+    {
+      "label": "Email",
+      "url": "mailto:you@example.com"
+    },
+    {
+      "label": "YouTube",
+      "url": "https://www.youtube.com/@beppujah"
+    },
+    {
+      "label": "GitHub",
+      "url": "https://github.com/beppujah"
+    }
   ],
   "reactions": {
-    "supabase_url": "",
-    "supabase_anon_key": ""
+    "supabase_url": "https://hdyvuinbihmibmyqwjqf.supabase.co",
+    "supabase_anon_key": "sb_publishable_me01OuuqxiCywuCo8XiRVA_WKaA7cPq"
   }
 }
