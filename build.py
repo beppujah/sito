@@ -25,8 +25,8 @@ SRC = ROOT / "src"
 OUT = ROOT / "_site"
 
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg", ".avif"}
-VIDEO_EXT = {".mp4", ".webm", ".mov", ".m4v"}
-AUDIO_EXT = {".mp3", ".wav", ".ogg", ".m4a", ".flac"}
+VIDEO_EXT = {".mp4", ".webm", ".mov", ".m4v", ".ogv"}
+AUDIO_EXT = {".mp3", ".wav", ".ogg", ".oga", ".m4a", ".aac", ".flac", ".opus"}
 
 # Reaction kinds, in display order. Keep in sync with reactions.sql.
 TRUE = ("true", "yes", "1")
@@ -41,7 +41,7 @@ REACTIONS = ["sun", "moon", "rain", "cloud", "leaf", "water", "wind"]
 def svg(inner, box=24, cls=""):
     return (
         f'<svg class="{cls}" viewBox="0 0 {box} {box}" fill="none" stroke="currentColor" '
-        f'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" '
+        f'stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" '
         f'aria-hidden="true">{inner}</svg>'
     )
 
@@ -49,22 +49,17 @@ def svg(inner, box=24, cls=""):
 ICONS = {
     # Circled "i": opens the about + contact page.
     "info": svg(
-        '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/>'
-        '<circle cx="12" cy="7.6" r="0.6" fill="currentColor"/>'
+        '<circle cx="12" cy="12" r="9.25"/><path d="M12 10.75v6"/>'
+        '<circle cx="12" cy="7.75" r="0.55" fill="currentColor" stroke="none"/>'
     ),
-    "back": svg('<path d="M20 12H4.5"/><path d="M10.5 6L4.5 12l6 6"/>'),
+    "back": svg('<path d="M19.5 12H4.5"/><path d="M10 6.5L4.5 12l5.5 5.5"/>'),
     "grid": svg(
-        '<g fill="currentColor" stroke="none">'
-        '<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/>'
-        '<rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/>'
-        "</g>",
+        '<rect x="4.5" y="4.5" width="6" height="6"/><rect x="13.5" y="4.5" width="6" height="6"/>'
+        '<rect x="4.5" y="13.5" width="6" height="6"/><rect x="13.5" y="13.5" width="6" height="6"/>',
         cls="icon-grid",
     ),
-    "expand": svg(
-        '<path d="M14 4h6v6"/><path d="M20 4l-6.5 6.5"/>'
-        '<path d="M10 20H4v-6"/><path d="M4 20l6.5-6.5"/>',
-        cls="icon-expand",
-    ),
+    # Full screen: a single frame.
+    "expand": svg('<rect x="6.5" y="3.5" width="11" height="17"/>', cls="icon-expand"),
     "sun": svg(
         '<circle cx="12" cy="12" r="3.8"/>'
         '<path d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4'
@@ -227,7 +222,18 @@ def render_markdown(body):
             flush()
         para.append(text)
     flush()
-    return "\n".join(out)
+    # Consecutive media (with only blank lines between them) form one block.
+    grouped, run = [], []
+    for block in out + [""]:
+        if block.startswith("<figure"):
+            run.append(block)
+            continue
+        if run:
+            grouped.append('<div class="media">' + "".join(run) + "</div>")
+            run = []
+        if block:
+            grouped.append(block)
+    return "\n".join(grouped)
 
 
 def plain_summary(body, limit=160):
@@ -358,7 +364,17 @@ def reactions_html(slug):
         '<span class="count"></span></button>'
         for kind in REACTIONS
     )
-    return f'<div class="reactions" data-post="{esc(slug)}" role="group" aria-label="Reactions">{buttons}</div>'
+    note = (
+        "Non-binary reactions: no likes, no dislikes. Pick the weather this post leaves you in. "
+        "One per visitor, anonymous. Tap it again to take it back."
+    )
+    return (
+        f'<section class="reactions-box"><div class="reactions" data-post="{esc(slug)}" role="group" '
+        f'aria-label="Reactions" aria-describedby="reactions-note">{buttons}'
+        '<button class="reactions-info" type="button" aria-expanded="false" aria-controls="reactions-note" '
+        'aria-label="About these reactions">*</button></div>'
+        f'<p class="reactions-note" id="reactions-note">{esc(note)}</p></section>'
+    )
 
 
 def post_page(site, post, version):

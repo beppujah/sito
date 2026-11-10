@@ -9,7 +9,9 @@
 
   var config = window.SITE_CONFIG || {};
   var $ = function (id) { return document.getElementById(id); };
-  var state = { posts: [], editing: null, cover: null, media: [], slugTouched: false };
+  // media: new files to upload. existing: files already in the post folder.
+  // removed: names of existing files to delete on publish.
+  var state = { posts: [], editing: null, cover: null, media: [], existing: [], removed: [], slugTouched: false };
 
   /* ---------------- settings ---------------- */
 
@@ -122,12 +124,44 @@
     $('slug-note').textContent = $('slug').value ? 'Link: posts/' + $('slug').value + '/' : '';
   };
 
+  var kb = function (bytes) { return Math.max(1, Math.round(bytes / 1024)) + ' KB'; };
+
+  // Take every "![...](name)" line for this file out of the text.
+  var unlink = function (name) {
+    var safe = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    var line = new RegExp('^[ \\t]*!\\[[^\\]]*\\]\\(' + safe + '\\)[ \\t]*$', 'gm');
+    $('text').value = $('text').value.replace(line, '').replace(/\n{3,}/g, '\n\n').trim();
+  };
+
   var renderMedia = function () {
     var list = $('media-list');
     list.textContent = '';
-    state.media.forEach(function (item) {
+    var rows = state.existing
+      .filter(function (file) { return state.removed.indexOf(file.name) < 0; })
+      .map(function (file) { return { name: file.name, size: file.size, existing: true }; })
+      .concat(state.media.map(function (item) { return { name: item.name, size: item.blob.size, item: item }; }));
+    rows.forEach(function (entry) {
       var row = document.createElement('li');
-      row.textContent = item.name + ' (' + Math.max(1, Math.round(item.blob.size / 1024)) + ' KB)';
+      var name = document.createElement('span');
+      name.textContent = entry.name;
+      var size = document.createElement('span');
+      size.className = 'size';
+      size.textContent = kb(entry.size) + (entry.item ? ', new' : '');
+      var remove = document.createElement('button');
+      remove.type = 'button';
+      remove.className = 'remove';
+      remove.textContent = '\u00d7';
+      remove.setAttribute('aria-label', 'Remove ' + entry.name);
+      remove.addEventListener('click', function () {
+        if (entry.item) state.media.splice(state.media.indexOf(entry.item), 1);
+        else state.removed.push(entry.name);
+        unlink(entry.name);
+        renderMedia();
+        status(entry.name + ' removed' + (entry.existing ? '. It is deleted when you publish.' : '.'));
+      });
+      row.appendChild(name);
+      row.appendChild(size);
+      row.appendChild(remove);
       list.appendChild(row);
     });
   };
@@ -161,6 +195,8 @@
     state.editing = null;
     state.cover = null;
     state.media = [];
+    state.existing = [];
+    state.removed = [];
     state.slugTouched = false;
     ['title', 'slug', 'text', 'cover', 'media'].forEach(function (id) { $(id).value = ''; });
     $('hidden').checked = false;
@@ -220,7 +256,10 @@
         return prepare(file, cleanName(file.name)).then(function (item) {
           var taken = function (name) {
             return name === 'post.md' || /^cover\./.test(name) ||
-              state.media.some(function (other) { return other.name === name; });
+              state.media.some(function (other) { return other.name === name; }) ||
+              state.existing.some(function (file) {
+                return file.name === name && state.removed.indexOf(name) < 0;
+              });
           };
           var base = item.name.replace(/\.[^.]+$/, '');
           var ext = extension(item.name);
@@ -250,7 +289,10 @@
     status('Loading…');
     var path = '/contents/content/posts/' + encodeURIComponent(slug) + '/post.md?ref=' +
       encodeURIComponent($('branch').value.trim() || 'main');
-    gh(path).then(function (file) {
+    var folderPath = '/contents/content/posts/' + encodeURIComponent(slug) + '?ref=' +
+      encodeURIComponent($('branch').value.trim() || 'main');
+    Promise.all([gh(path), gh(folderPath)]).then(function (found) {
+      var file = found[0];
       var bytes = Uint8Array.from(atob(file.content.replace(/\s/g, '')), function (c) { return c.charCodeAt(0); });
       var parsed = parsePost(new TextDecoder().decode(bytes));
       state.editing = { slug: slug, cover: parsed.meta.cover || '', meta: parsed.meta };
@@ -264,6 +306,10 @@
       $('delete').hidden = false;
       labelPublish();
       $('cover-note').textContent = 'Current cover: ' + state.editing.cover + '. Choose a file only to replace it.';
+      state.existing = (Array.isArray(found[1]) ? found[1] : []).filter(function (entry) {
+        return entry.type === 'file' && entry.name !== 'post.md' && entry.name !== state.editing.cover;
+      }).map(function (entry) { return { name: entry.name, size: entry.size }; });
+      renderMedia();
       showSlug();
       status('');
     }).catch(function (error) {
@@ -315,6 +361,10 @@
     if (state.editing && state.cover && state.editing.cover && state.editing.cover !== coverName) {
       tree.push({ path: folder + state.editing.cover, mode: '100644', type: 'blob', sha: null }); // remove old cover
     }
+    state.removed.forEach(function (name) { // media taken out with the x
+      var replaced = uploads.some(function (item) { return item.name === name; });
+      if (!replaced) tree.push({ path: folder + name, mode: '100644', type: 'blob', sha: null });
+    });
 
     $('publish').disabled = true;
     var head;

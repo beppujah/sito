@@ -6,23 +6,21 @@
   --muted: #8c8c8c;
   --paper: #fff;
   --font: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
-  --text-width: 40rem;   /* width of the text column */
-  --media-width: 64rem;  /* width of images and video inside a post */
-  --icon: 30px;          /* corner icon size */
+  --text-width: 40rem;    /* width of the text column */
+  --media-width: 46rem;   /* largest width of images and video in a post (big screens) */
+  --media-height: 85vh;   /* largest height of images and video in a post (big screens) */
+  --column-ratio: 0.75;   /* home on big screens: column width = screen height x this (0.75 = 3:4) */
+  --icon: 26px;           /* corner icon size */
+  --column: min(100vw, calc(100vh * var(--column-ratio)));
 }
 
 *, *::before, *::after { box-sizing: border-box; }
 
-html { 
-   /* overflow: hidden; */
-   width: 100%;
-   height: 100%;
-   -webkit-text-size-adjust: 100%; }
+/* The page itself scrolls (no inner scroll boxes), so mobile browsers can
+   shrink their address bar and toolbar while scrolling down. */
+html { -webkit-text-size-adjust: 100%; }
 
 body {
-  height: 100%;
-  /* position: fixed; */
-  overflow-y: scroll;
   margin: 0;
   background: var(--paper);
   color: var(--ink);
@@ -38,10 +36,11 @@ em, i, cite, address, dfn, var { font-style: normal; }
 img, video, iframe { display: block; max-width: 100%; border: 0; }
 a { color: inherit; text-underline-offset: 0.2em; text-decoration-thickness: 1px; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
-:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+:focus-visible { outline: 1px solid currentColor; outline-offset: 3px; }
 
 /* ---------------------------------------------------------------
-   Corner icons
+   Corner icons: always visible. "difference" blending keeps them white
+   over dark images and turns them dark over light ones and the page.
    --------------------------------------------------------------- */
 .corner {
   position: fixed;
@@ -52,50 +51,36 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   display: grid;
   place-items: center;
   color: #fff;
-  transition: opacity 0.25s;
   mix-blend-mode: difference;
 }
-/* Icons hide while scrolling down and return on any scroll up (see app.js). */
-html.icons-hidden .corner:not(:focus-visible) { opacity: 0; pointer-events: none; }
 .corner-left { left: max(0.6rem, env(safe-area-inset-left)); }
 .corner-right { right: max(0.6rem, env(safe-area-inset-right)); }
 .corner svg { width: var(--icon); height: var(--icon); }
 
-/* Inner pages have a white background: "difference" keeps the icon white
-   over the cover photo and turns it black over the page. */
-.page .corner { mix-blend-mode: difference; }
+/* On the home page the icons sit in the corners of the centred column. */
+.home .corner-left { left: max(0.6rem, env(safe-area-inset-left), calc(50% - var(--column) / 2 + 0.6rem)); }
+.home .corner-right { right: max(0.6rem, env(safe-area-inset-right), calc(50% - var(--column) / 2 + 0.6rem)); }
 
 html[data-mode="full"] .icon-expand,
 html[data-mode="grid"] .icon-grid { display: none; }
 
 /* ---------------------------------------------------------------
-   Home: full screen feed and grid
+   Home: full screen feed and grid, in a column centred on big screens
    --------------------------------------------------------------- */
-.home { overflow: hidden; background: #000; }
+html[data-mode] { scrollbar-width: none; }
+html[data-mode]::-webkit-scrollbar { display: none; }
+html[data-mode="full"] { scroll-snap-type: y mandatory; }
 
 .feed {
-  position: fixed;
-  inset: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: none;
-}
-.feed::-webkit-scrollbar { display: none; }
-
-.item { display: block; overflow: hidden; background: #111; }
-.item img { width: 100%; height: 100%; object-fit: cover; object-position: center;}
-
-@media (min-width: 768px) {
-  .item img {
-    width: auto;
-    height: 100%;
-    margin-inline: auto;
-  }
+  width: var(--column);
+  margin-inline: auto;
 }
 
-html[data-mode="full"] .feed { scroll-snap-type: y mandatory; }
+.item { display: block; overflow: hidden; background: #e8e8e8; }
+.item img { width: 100%; height: 100%; object-fit: cover; }
+
 html[data-mode="full"] .item {
-  height: 100%;
+  height: 100vh;
   scroll-snap-align: start;
   scroll-snap-stop: always;
 }
@@ -103,19 +88,18 @@ html[data-mode="full"] .item {
 html[data-mode="grid"] .feed {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  grid-auto-rows: calc(100% / 3);
-  align-content: start;
+  grid-auto-rows: calc(100vh / 3);
   gap: 0;
 }
 
-.empty { color: #fff; text-align: center; margin-top: 45vh; }
+.empty { text-align: center; padding-top: 45vh; margin: 0; }
 
 /* ---------------------------------------------------------------
    Post and text pages
    --------------------------------------------------------------- */
 .page main { padding-bottom: 6rem; }
 
-.post-cover img { width: 100%; max-height: 100vh; max-height: 100svh; object-fit: cover; }
+.post-cover img { width: 100%; height: auto; max-height: 100svh; object-fit: cover; }
 
 .post-head,
 .post-body > *,
@@ -143,16 +127,38 @@ p, ul { margin-block: 0 1.1rem; }
 time { color: var(--muted); font-size: 0.85rem; }
 .post-body { margin-top: 2rem; }
 
-.post-body > figure {
+/* Media: edge to edge on phones, no gap between consecutive items. */
+.post-body > .media {
   max-width: var(--media-width);
   padding-inline: 0;
   margin-block: 2.5rem;
 }
-figure img, figure video { width: 100%; height: auto; }
-figure.embed { aspect-ratio: 16 / 9; }
-figure.embed iframe { width: 100%; height: 100%; }
-.post-body > figure.audio { max-width: var(--text-width); padding-inline: 1.25rem; }
-figure audio { width: 100%; }
+.media figure { margin: 0; }
+.media img, .media video { width: 100%; height: auto; }
+.media .embed { aspect-ratio: 16 / 9; }
+.media .embed iframe { width: 100%; height: 100%; }
+.media .audio { padding: 0.75rem 1.25rem; }
+.media audio { display: block; width: 100%; }
+
+/* Big screens: media keep a sensible size instead of filling the width. */
+@media (min-width: 768px) {
+  .post-cover {
+    max-width: var(--media-width);
+    margin: 4.5rem auto 0;
+    padding-inline: 1.25rem;
+  }
+  .post-cover img,
+  .media img,
+  .media video {
+    width: auto;
+    max-width: 100%;
+    max-height: var(--media-height);
+    margin-inline: auto;
+    object-fit: contain;
+  }
+  .post-body > .media { padding-inline: 1.25rem; }
+  .media .audio { padding-inline: 0; }
+}
 
 code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; }
 
@@ -162,16 +168,19 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; 
 /* ---------------------------------------------------------------
    Reactions
    --------------------------------------------------------------- */
-.reactions {
-  display: flex;
-  justify-content: center;
-  gap: clamp(0.25rem, 2.5vw, 1.1rem);
+.reactions-box {
   max-width: var(--text-width);
   margin: 4.5rem auto 0;
   padding-inline: 0.75rem;
 }
+.reactions {
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  gap: clamp(0.15rem, 2vw, 1rem);
+}
 .reaction {
-  width: 40px;
+  width: 38px;
   display: grid;
   justify-items: center;
   gap: 0.2rem;
@@ -179,9 +188,9 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; 
   color: #a3a3a3;
   transition: color 0.15s;
 }
-.reaction svg { width: 26px; height: 26px; }
+.reaction svg { width: 24px; height: 24px; }
 .reaction[aria-pressed="true"] { color: var(--ink); }
-.reaction[aria-pressed="true"] svg { stroke-width: 2.1; }
+.reaction[aria-pressed="true"] svg { stroke-width: 1.7; }
 @media (hover: hover) { .reaction:hover { color: var(--ink); } }
 .reaction .count {
   min-height: 1.1em;
@@ -189,6 +198,29 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; 
   line-height: 1.1;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+}
+.reactions-info {
+  width: 20px;
+  padding-top: 0.15rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--muted);
+}
+.reactions-note {
+  max-width: 26rem;
+  margin: 0.9rem auto 0;
+  text-align: center;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--muted);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s, visibility 0.2s;
+}
+.reactions-box.open .reactions-note { opacity: 1; visibility: visible; }
+@media (hover: hover) {
+  .reactions-box:has(.reactions-info:hover) .reactions-note { opacity: 1; visibility: visible; }
+  .reactions-info:hover { color: var(--ink); }
 }
 
 /* ---------------------------------------------------------------
@@ -217,6 +249,17 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; 
 .admin summary { cursor: pointer; }
 .hint { margin: 0.4rem 0 0; font-size: 0.8rem; color: var(--muted); }
 #media-list { margin-top: 0.6rem; font-size: 0.85rem; }
+#media-list li { display: flex; align-items: center; gap: 0.5rem; margin: 0; }
+#media-list .size { color: var(--muted); }
+#media-list .remove {
+  width: 36px;
+  height: 32px;
+  margin-left: auto;
+  font-size: 1.15rem;
+  line-height: 1;
+  color: var(--muted);
+}
+#media-list .remove:hover { color: #b3261e; }
 .admin label.check {
   display: flex;
   align-items: center;
@@ -227,8 +270,6 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; 
 }
 .admin label.check input { width: 1.1rem; height: 1.1rem; margin: 0; accent-color: var(--ink); }
 .actions { display: flex; flex-wrap: wrap; gap: 0.75rem; }
-.button.quiet { background: none; color: var(--ink); box-shadow: inset 0 0 0 1px #d4d4d4; }
-.button.danger { background: #b3261e; color: #fff; box-shadow: none; }
 .button {
   margin-top: 2rem;
   padding: 0.7rem 1.6rem;
@@ -236,6 +277,8 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; 
   color: var(--paper);
   font-size: 0.95rem;
 }
+.button.quiet { background: none; color: var(--ink); box-shadow: inset 0 0 0 1px #d4d4d4; }
+.button.danger { background: #b3261e; color: #fff; box-shadow: none; }
 .button:disabled { opacity: 0.4; cursor: default; }
 #status { min-height: 1.6em; margin-top: 1rem; font-size: 0.9rem; }
 #status.error { color: #b3261e; }

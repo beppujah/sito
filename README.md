@@ -52,7 +52,8 @@ https://www.youtube.com/watch?v=XXXXXXXXXXX
 ```
 
 - `![](file)` on its own line places an image, a video (`.mp4`, `.webm`, `.mov`)
-  or an audio file (`.mp3`, `.wav`, `.m4a`) from the post folder.
+  or an audio file (`.mp3`, `.m4a`, `.aac`, `.wav`, `.ogg`) from the post folder.
+  Consecutive media sit together with no gap between them.
 - A YouTube or Vimeo link on its own line becomes a player.
 - `## Heading`, `**bold**`, `[text](https://...)`, `- list item`.
 - `draft: true` in the header hides a post: it stays in the repository but is not published.
@@ -76,6 +77,8 @@ to 2400 px before upload.
   from the Post list, untick the box and publish when it is ready. The same
   box takes a published post offline again.
 - **Pinned to the top** keeps the post first on the home page.
+- The **x** next to a media file takes it out of the post and out of the text;
+  files already published are deleted when you press Publish.
 - **Delete post** (two taps) removes the post folder. Earlier versions remain
   in the repository history.
 
@@ -107,5 +110,8 @@ share totals between visitors, create a free Supabase project, run
 
 ## Tweaking the look
 
-Colours, font, column widths and icon size are variables at the top of
-`src/style.css`. Icons are inline SVG in `ICONS` in `build.py`.
+Colours, font, column widths, media size, icon size and the shape of the home
+column on big screens (`--column-ratio`) are variables at the top of
+`src/style.css`. The one-photo-per-gesture timing for mouse and trackpad
+(`GESTURE_GAP`, `MIN_STEP`, `THRESHOLD`) is at the top of the home section in
+`src/app.js`. Icons are inline SVG in `ICONS` in `build.py`.
