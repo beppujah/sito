@@ -55,7 +55,8 @@ https://www.youtube.com/watch?v=XXXXXXXXXXX
   or an audio file (`.mp3`, `.wav`, `.m4a`) from the post folder.
 - A YouTube or Vimeo link on its own line becomes a player.
 - `## Heading`, `**bold**`, `[text](https://...)`, `- list item`.
-- `draft: true` in the header keeps a post off the site.
+- `draft: true` in the header hides a post: it stays in the repository but is not published.
+- `pinned: true` keeps a post first on the home page, above newer ones.
 - The folder name is the address of the post. Do not rename it once shared.
 - Posts are ordered by date, newest first.
 
@@ -70,6 +71,15 @@ Repository access: only this repository, Permissions: Contents: Read and write.
 The token stays in that browser. Then pick "New post" (or an existing one), fill
 in title, cover and text, add media, and press Publish. Large photos are scaled
 to 2400 px before upload.
+
+- **Hidden (draft)** saves the post without showing it on the site. Reopen it
+  from the Post list, untick the box and publish when it is ready. The same
+  box takes a published post offline again.
+- **Pinned to the top** keeps the post first on the home page.
+- **Delete post** (two taps) removes the post folder. Earlier versions remain
+  in the repository history.
+
+The repository is public, so hidden posts can still be read there.
 
 ### From a computer
 

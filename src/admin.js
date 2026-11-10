@@ -132,12 +132,42 @@
     });
   };
 
+  var isTrue = function (value) { return /^(true|yes|1)$/i.test(value || ''); };
+
+  var labelPublish = function () {
+    $('publish').textContent = $('hidden').checked ? 'Save as hidden' : 'Publish';
+  };
+  $('hidden').addEventListener('change', labelPublish);
+
+  var disarmDelete = function () {
+    $('delete').textContent = 'Delete post';
+    $('delete').classList.remove('danger');
+  };
+
+  // Rebuild the "Post" list from state.posts.
+  var listPosts = function () {
+    var select = $('post');
+    while (select.options.length > 1) select.remove(1);
+    state.posts.forEach(function (post) {
+      var option = document.createElement('option');
+      option.value = post.slug;
+      option.textContent = post.date + '  ' + post.title +
+        (post.pinned ? '  (pinned)' : '') + (post.hidden ? '  (hidden)' : '');
+      select.appendChild(option);
+    });
+  };
+
   var reset = function () {
     state.editing = null;
     state.cover = null;
     state.media = [];
     state.slugTouched = false;
     ['title', 'slug', 'text', 'cover', 'media'].forEach(function (id) { $(id).value = ''; });
+    $('hidden').checked = false;
+    $('pinned').checked = false;
+    $('delete').hidden = true;
+    disarmDelete();
+    labelPublish();
     $('date').value = today();
     $('slug').disabled = false;
     $('cover-note').textContent = '';
@@ -210,12 +240,7 @@
     .catch(function () { return []; })
     .then(function (posts) {
       state.posts = posts;
-      posts.forEach(function (post) {
-        var option = document.createElement('option');
-        option.value = post.slug;
-        option.textContent = post.date + '  ' + post.title;
-        $('post').appendChild(option);
-      });
+      listPosts();
     });
 
   $('post').addEventListener('change', function () {
@@ -234,6 +259,10 @@
       $('slug').value = slug;
       $('slug').disabled = true; // the address of a published post never changes
       $('text').value = parsed.body;
+      $('hidden').checked = isTrue(parsed.meta.draft);
+      $('pinned').checked = isTrue(parsed.meta.pinned);
+      $('delete').hidden = false;
+      labelPublish();
       $('cover-note').textContent = 'Current cover: ' + state.editing.cover + '. Choose a file only to replace it.';
       showSlug();
       status('');
@@ -266,10 +295,16 @@
 
     var folder = 'content/posts/' + slug + '/';
     var coverName = state.cover ? state.cover.name : state.editing.cover;
+    var hidden = $('hidden').checked;
+    var pinned = $('pinned').checked;
     var front = ['title: ' + title, 'date: ' + date, 'cover: ' + coverName];
+    if (hidden) front.push('draft: true');
+    if (pinned) front.push('pinned: true');
     if (state.editing) {
-      Object.keys(state.editing.meta).forEach(function (key) { // keep extra fields such as "draft"
-        if (['title', 'date', 'cover'].indexOf(key) < 0) front.push(key + ': ' + state.editing.meta[key]);
+      Object.keys(state.editing.meta).forEach(function (key) { // keep any other field
+        if (['title', 'date', 'cover', 'draft', 'pinned'].indexOf(key) < 0) {
+          front.push(key + ': ' + state.editing.meta[key]);
+        }
       });
     }
     var markdown = '---\n' + front.join('\n') + '\n---\n\n' + $('text').value.trim() + '\n';
@@ -283,6 +318,7 @@
 
     $('publish').disabled = true;
     var head;
+    var wasEditing = !!state.editing;
     status('Connecting…');
     gh('/git/ref/heads/' + encodeURIComponent(branch)).then(function (ref) {
       head = ref.object.sha;
@@ -312,14 +348,70 @@
     }).then(function (commit) {
       return gh('/git/refs/heads/' + encodeURIComponent(branch), 'PATCH', { sha: commit.sha });
     }).then(function () {
-      if (!state.editing) state.posts.push({ slug: slug, title: title, date: date, cover: coverName });
+      state.posts = state.posts.filter(function (post) { return post.slug !== slug; });
+      state.posts.unshift({ slug: slug, title: title, date: date, cover: coverName, hidden: hidden, pinned: pinned });
+      listPosts();
       $('post').value = '';
       reset();
-      status('Published. The site updates in about a minute: posts/' + slug + '/');
+      status(hidden
+        ? 'Saved as hidden. It ' + (wasEditing ? 'leaves the site in about a minute.' : 'is not on the site.')
+        : 'Published. The site updates in about a minute: posts/' + slug + '/');
     }).catch(function (error) {
       status(error.message, true);
     }).then(function () {
       $('publish').disabled = false;
+    });
+  });
+
+  /* ---------------- delete ---------------- */
+
+  $('delete').addEventListener('click', function () {
+    if (!state.editing) return;
+    if (!$('token').value.trim()) {
+      $('settings').open = true;
+      status('Set the access token under Connection.', true);
+      return;
+    }
+    if (!$('delete').classList.contains('danger')) { // first tap arms, second tap deletes
+      $('delete').textContent = 'Tap again to delete';
+      $('delete').classList.add('danger');
+      status('This removes the post, its cover and its media from the site.');
+      return;
+    }
+    var slug = state.editing.slug;
+    var title = $('title').value.trim() || slug;
+    var branch = $('branch').value.trim() || 'main';
+    var head;
+    $('delete').disabled = $('publish').disabled = true;
+    status('Deleting…');
+    gh('/git/ref/heads/' + encodeURIComponent(branch)).then(function (ref) {
+      head = ref.object.sha;
+      return Promise.all([
+        gh('/git/commits/' + head),
+        gh('/contents/content/posts/' + encodeURIComponent(slug) + '?ref=' + head)
+      ]);
+    }).then(function (found) {
+      var files = (Array.isArray(found[1]) ? found[1] : []).filter(function (entry) { return entry.type === 'file'; });
+      if (!files.length) throw new Error('Nothing to delete: the post folder is empty or missing.');
+      return gh('/git/trees', 'POST', {
+        base_tree: found[0].tree.sha,
+        tree: files.map(function (entry) { return { path: entry.path, mode: '100644', type: 'blob', sha: null }; })
+      });
+    }).then(function (created) {
+      return gh('/git/commits', 'POST', { message: 'Delete post: ' + title, tree: created.sha, parents: [head] });
+    }).then(function (commit) {
+      return gh('/git/refs/heads/' + encodeURIComponent(branch), 'PATCH', { sha: commit.sha });
+    }).then(function () {
+      state.posts = state.posts.filter(function (post) { return post.slug !== slug; });
+      listPosts();
+      $('post').value = '';
+      reset();
+      status('Deleted. It leaves the site in about a minute.');
+    }).catch(function (error) {
+      disarmDelete();
+      status(error.message, true);
+    }).then(function () {
+      $('delete').disabled = $('publish').disabled = false;
     });
   });
 

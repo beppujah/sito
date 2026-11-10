@@ -29,6 +29,8 @@ VIDEO_EXT = {".mp4", ".webm", ".mov", ".m4v"}
 AUDIO_EXT = {".mp3", ".wav", ".ogg", ".m4a", ".flac"}
 
 # Reaction kinds, in display order. Keep in sync with reactions.sql.
+TRUE = ("true", "yes", "1")
+
 REACTIONS = ["sun", "moon", "rain", "cloud", "leaf", "water", "wind"]
 
 
@@ -262,8 +264,8 @@ def load_posts():
             warn(f"{folder.name}: no post.md, skipped")
             continue
         meta, body = split_front_matter(source.read_text("utf-8"))
-        if meta.get("draft", "").lower() in ("true", "yes", "1"):
-            continue
+        hidden = meta.get("draft", "").lower() in TRUE
+        pinned = meta.get("pinned", "").lower() in TRUE
         cover = meta.get("cover", "")
         if not cover:
             found = sorted(f.name for f in folder.glob("cover.*"))
@@ -285,9 +287,12 @@ def load_posts():
                 "body": body,
                 "description": meta.get("description") or plain_summary(body),
                 "folder": folder,
+                "hidden": hidden,
+                "pinned": pinned,
             }
         )
-    posts.sort(key=lambda post: (post["date"], post["slug"]), reverse=True)
+    # Pinned posts first, then newest first.
+    posts.sort(key=lambda post: (post["pinned"], post["date"], post["slug"]), reverse=True)
     return posts
 
 
@@ -439,7 +444,12 @@ def admin_page(site, version):
 <p class="hint">Blank line for a new paragraph. **bold**, [link text](https://…), ## heading. A YouTube or Vimeo link on its own line becomes a player.</p>
 <label>Add images, video or audio at the cursor<input id="media" type="file" multiple accept="image/*,video/*,audio/*"></label>
 <ul class="links" id="media-list"></ul>
+<label class="check"><input id="hidden" type="checkbox">Hidden (draft): saved, but not shown on the site</label>
+<label class="check"><input id="pinned" type="checkbox">Pinned to the top</label>
+<div class="actions">
 <button class="button" id="publish" type="button">Publish</button>
+<button class="button quiet" id="delete" type="button" hidden>Delete post</button>
+</div>
 <p id="status" role="status"></p>
 </main>
 <script>window.SITE_CONFIG={config};</script>
@@ -460,7 +470,8 @@ def write(path, text):
 
 def build():
     site = load_site()
-    posts = load_posts()
+    everything = load_posts()
+    posts = [post for post in everything if not post["hidden"]]  # hidden posts are not published
     digest = hashlib.sha1()
     for name in ("style.css", "app.js", "admin.js"):
         digest.update((SRC / name).read_bytes())
@@ -491,12 +502,15 @@ def build():
                 shutil.copy2(item, target / item.name)
         write(target / "index.html", post_page(site, post, version))
 
+    # Read by the editor; hidden posts are listed here so they can be reopened.
     index = [
-        {"slug": p["slug"], "title": p["title"], "date": p["date"].isoformat(), "cover": p["cover"]}
-        for p in posts
+        {"slug": p["slug"], "title": p["title"], "date": p["date"].isoformat(), "cover": p["cover"],
+         "hidden": p["hidden"], "pinned": p["pinned"]}
+        for p in everything
     ]
     write(OUT / "posts.json", json.dumps(index, ensure_ascii=False, indent=1))
-    print(f"Built {len(posts)} posts into {OUT.name}/")
+    hidden = len(everything) - len(posts)
+    print(f"Built {len(posts)} posts into {OUT.name}/" + (f" ({hidden} hidden)" if hidden else ""))
 
 
 def serve(port):
