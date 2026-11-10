@@ -92,13 +92,19 @@
     });
 
     /* Mouse wheel and trackpad, full screen only: one photo per gesture.
-       A flick moves exactly one photo; the next move needs a new gesture
-       (a short pause in the wheel events), so photos do not fly past.
+       A swipe moves exactly one photo. After a trackpad swipe the system
+       keeps sending fading "inertia" events for a second or so; those are
+       ignored. A new gesture is recognised by a pause in the events, a
+       change of direction, or the movement speeding up again (a new swipe
+       started while the inertia of the previous one was still fading).
        Touch screens keep the native snapping. */
-    var GESTURE_GAP = 180;  // ms without wheel events that ends a gesture
-    var MIN_STEP = 700;     // ms between two moves at least (includes the slide)
+    var GESTURE_GAP = 160;  // ms without wheel events that ends a gesture
+    var MIN_STEP = 600;     // ms between two moves at least (includes the slide)
     var THRESHOLD = 20;     // wheel distance needed to move
+    var SPEED_UP = 1.4;     // a delta this much larger than the recent ones starts a new gesture
     var lastWheel = 0;
+    var lastSign = 0;
+    var recent = [];        // the last few wheel deltas (absolute)
     var lockedAt = 0;
     var locked = false;
     var travel = 0;
@@ -107,16 +113,26 @@
       if (root.dataset.mode !== 'full' || event.ctrlKey) return; // ctrl: pinch zoom
       if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return;
       event.preventDefault();
+      var delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1);
+      var size = Math.abs(delta);
+      var sign = delta > 0 ? 1 : delta < 0 ? -1 : 0;
       var now = Date.now();
       var gap = now - lastWheel;
+      var peak = Math.max.apply(null, recent.concat([0]));
+      var fresh = gap > GESTURE_GAP ||
+        (sign && lastSign && sign !== lastSign) ||
+        (size > 8 && size > peak * SPEED_UP);
       lastWheel = now;
-      if (gap > GESTURE_GAP) travel = 0;
+      if (sign) lastSign = sign;
+      recent = (gap > GESTURE_GAP ? [] : recent.slice(-3)).concat([size]);
+
+      if (fresh) travel = 0;
       if (animating) return;
       if (locked) {
-        if (gap > GESTURE_GAP && now - lockedAt > MIN_STEP) locked = false;
+        if (fresh && now - lockedAt > MIN_STEP) locked = false;
         else return;
       }
-      travel += event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? window.innerHeight : 1);
+      travel += delta;
       if (Math.abs(travel) < THRESHOLD) return;
       var height = items[0] ? items[0].offsetHeight : window.innerHeight;
       var index = Math.round(window.scrollY / height) + (travel > 0 ? 1 : -1);
