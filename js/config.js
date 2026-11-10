@@ -37,7 +37,7 @@ window.SITE_CONFIG = {
    *              Example: { id: "VIDEO_ID", title: "Chlorophone demo" }
    */
   youtube: {
-    channelId: "",
+    channelId: "UCfGkqkziTcOm8wPHr28uNxA",
     channelUrl: "https://www.youtube.com/@beppujah",
     videos: []
   },
