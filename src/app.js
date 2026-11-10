@@ -63,6 +63,23 @@
       requestAnimationFrame(frame);
     };
 
+    // A click while a photo is sliding: the press and the release land on
+    // different photos, so the browser would not open either. Open the one
+    // that was pressed.
+    var pressed = null;
+    feed.addEventListener('pointerdown', function (event) {
+      var item = event.target.closest('.item');
+      pressed = animating && item && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey
+        ? { href: item.href, x: event.clientX, y: event.clientY } : null;
+    });
+    window.addEventListener('pointerup', function (event) {
+      var press = pressed;
+      pressed = null;
+      if (press && Math.abs(event.clientX - press.x) < 12 && Math.abs(event.clientY - press.y) < 12) {
+        location.href = press.href;
+      }
+    });
+
     var goTo = function (index, smooth) {
       if (!items[index]) return;
       if (smooth) slideTo(items[index].offsetTop);
