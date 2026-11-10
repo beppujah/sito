@@ -4,7 +4,7 @@ Minimal portfolio / blog for GitHub Pages. No dependencies: one Python script
 turns the `content/` folder into a static site.
 
 - Home: full screen cover photos, scrolled vertically, or a 3x3 grid.
-- Top left icon: about + contact page (a back arrow on inner pages).
+- Top left info icon: about + contact page (a back arrow on inner pages).
 - Top right icon: switch between full screen and grid.
 - Each post has its own address: `posts/<name>/`.
 - Anonymous reactions under each post (sun, moon, rain, cloud, leaf, water, wind).

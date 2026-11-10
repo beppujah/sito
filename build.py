@@ -45,17 +45,10 @@ def svg(inner, box=24, cls=""):
 
 
 ICONS = {
-    # Head in profile with circuit traces: opens the about + contact page.
-    "head": svg(
-        '<path d="M17 5C12 4.4 8 7 7.6 11.5L7.4 14 4.6 17.6 7.2 18.2V20.6'
-        'C7.2 22.6 8.4 23.6 10.6 23.6H13L15 27.4"/>'
-        '<path d="M17 5H22.6"/><circle cx="24.2" cy="5" r="1.6"/>'
-        '<path d="M13 9H17.4L19.8 11.4H21.6"/><circle cx="23.2" cy="11.4" r="1.6"/>'
-        '<path d="M11.6 13.4H17"/><circle cx="18.6" cy="13.4" r="1.6"/>'
-        '<path d="M11.6 17.2H16.4L18.4 16.4H22.2"/><circle cx="23.8" cy="16.4" r="1.6"/>'
-        '<path d="M13 20.6H16.6"/><circle cx="18.2" cy="20.6" r="1.6"/>'
-        '<circle cx="22.6" cy="21.6" r="1.6"/><path d="M21.6 22.9L20.4 24.4 22 27.4"/>',
-        box=32,
+    # Circled "i": opens the about + contact page.
+    "info": svg(
+        '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/>'
+        '<circle cx="12" cy="7.6" r="0.6" fill="currentColor"/>'
     ),
     "back": svg('<path d="M20 12H4.5"/><path d="M10.5 6L4.5 12l6 6"/>'),
     "grid": svg(
@@ -342,7 +335,7 @@ def home_page(site, posts, version):
         )
     else:
         items = '<p class="empty">No posts yet.</p>'
-    body = f"""<a class="corner corner-left" href="about/" aria-label="About and contact">{ICONS["head"]}</a>
+    body = f"""<a class="corner corner-left" href="about/" aria-label="About and contact">{ICONS["info"]}</a>
 <button class="corner corner-right" id="mode" type="button" aria-label="Switch view">{ICONS["grid"]}{ICONS["expand"]}</button>
 <main class="feed" id="feed">
 {items}
