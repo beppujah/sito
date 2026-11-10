@@ -14,8 +14,114 @@
   // flags: which image is the background and which the banner ("@cover" = the cover).
   var state = {
     posts: [], editing: null, cover: null, media: [], existing: [], removed: [],
-    flags: { background: null, banner: null }, about: null, slugTouched: false
+    flags: { background: null, banner: null }, about: null, slugTouched: false, lang: 'en'
   };
+
+  /* ---------------- languages ---------------- */
+
+  var switchLang = function (lang) {
+    state.lang = lang;
+    Array.prototype.forEach.call(document.querySelectorAll('.lang-en'), function (el) { el.hidden = lang !== 'en'; });
+    Array.prototype.forEach.call(document.querySelectorAll('.lang-it'), function (el) { el.hidden = lang !== 'it'; });
+    $('tab-en').setAttribute('aria-selected', lang === 'en' ? 'true' : 'false');
+    $('tab-it').setAttribute('aria-selected', lang === 'it' ? 'true' : 'false');
+    if (typeof renderMedia === 'function') renderMedia(); // descriptions follow the language
+  };
+  $('tab-en').addEventListener('click', function () { switchLang('en'); });
+  $('tab-it').addEventListener('click', function () { switchLang('it'); });
+
+  // Automatic translation, English -> Italian, with MyMemory (free, no key).
+  // Media lines, bare links and link addresses are kept as they are.
+  var translateText = function (text) {
+    if (!text.trim()) return Promise.resolve(text);
+    var kept = [];
+    var keep = function (part) { kept.push(part); return '\u27e6' + (kept.length - 1) + '\u27e7'; };
+    var protect = function (block) {
+      return block
+        .replace(/\]\([^)\s]+\)/g, function (m) { return ']' + keep(m.slice(1)); })
+        .replace(/https?:\/\/[^\s)]+/g, keep);
+    };
+    var restore = function (block) {
+      return block.replace(/\u27e6\s*(\d+)\s*\u27e7/g, function (m, i) { return kept[+i]; });
+    };
+    var chunks = function (block) { // under 450 characters each, cut at sentence ends
+      var out = [''];
+      block.split(/(?<=[.!?;:])\s+/).forEach(function (sentence) {
+        if ((out[out.length - 1] + ' ' + sentence).length > 450 && out[out.length - 1]) out.push(sentence);
+        else out[out.length - 1] = (out[out.length - 1] ? out[out.length - 1] + ' ' : '') + sentence;
+      });
+      return out;
+    };
+    var decodeEntities = function (value) {
+      var box = document.createElement('textarea');
+      box.innerHTML = value;
+      return box.value;
+    };
+    var ask = function (piece) {
+      if (!piece.trim()) return Promise.resolve(piece);
+      return fetch('https://api.mymemory.translated.net/get?langpair=en|it&q=' + encodeURIComponent(piece))
+        .then(function (response) { return response.json(); })
+        .then(function (data) {
+          if (!data || data.responseStatus != 200) throw new Error('Translation: ' + ((data && data.responseDetails) || 'no answer'));
+          return decodeEntities(data.responseData.translatedText);
+        });
+    };
+    var blocks = text.split(/\n\s*\n/);
+    var result = [];
+    var chain = Promise.resolve();
+    blocks.forEach(function (block, index) {
+      chain = chain.then(function () {
+        var trimmed = block.trim();
+        var media = /^!\[([^\]]*)\]\((\S+?)(?:\s+"([^"]*)")?\)(\s+loop)?$/.exec(trimmed);
+        if (media) { // translate the description and the caption, keep the file
+          return Promise.all([ask(media[1] || ''), ask(media[3] || '')]).then(function (words) {
+            result[index] = '![' + words[0].replace(/[\[\]]/g, ' ') + '](' + media[2] +
+              (media[3] ? ' "' + words[1].replace(/"/g, '\u201d') + '"' : '') + ')' + (media[4] ? ' loop' : '');
+          });
+        }
+        if (/^(<|https?:\/\/\S+$)/.test(trimmed)) { result[index] = block; return; } // html, embeds
+        status('Translating ' + (index + 1) + ' of ' + blocks.length + '…');
+        var heading = (/^(#{1,3}\s+)/.exec(trimmed) || [''])[0];
+        var lines = trimmed.slice(heading.length).split('\n');
+        var done = [];
+        var inner = Promise.resolve();
+        lines.forEach(function (line, n) {
+          inner = inner.then(function () {
+            var bullet = (/^([-*]\s+)/.exec(line) || [''])[0];
+            var parts = chunks(protect(line.slice(bullet.length)));
+            return Promise.all(parts.map(ask)).then(function (translated) {
+              done[n] = bullet + restore(translated.join(' '));
+            });
+          });
+        });
+        return inner.then(function () { result[index] = heading + done.join('\n'); });
+      });
+    });
+    return chain.then(function () { return result.join('\n\n'); });
+  };
+
+  $('translate').addEventListener('click', function () {
+    var button = $('translate');
+    var filled = $('title-it').value.trim() || $('text-it').value.trim();
+    if (filled && !button.classList.contains('danger')) { // first tap arms when it would overwrite
+      button.textContent = 'Tap again to replace the Italian text';
+      button.classList.add('danger');
+      return;
+    }
+    button.textContent = 'Translate from English';
+    button.classList.remove('danger');
+    button.disabled = true;
+    var title = $('title').value.trim();
+    translateText(title).then(function (titleIt) {
+      $('title-it').value = titleIt;
+      return translateText($('text').value);
+    }).then(function (textIt) {
+      $('text-it').value = textIt;
+      status('Translated. Read it through, then publish.');
+    }).catch(function (error) {
+      status(error.message + '. You can write the Italian text by hand.', true);
+    }).then(function () { button.disabled = false; });
+  });
 
   /* ---------------- settings ---------------- */
 
@@ -152,6 +258,9 @@
   var kb = function (bytes) { return Math.max(1, Math.round(bytes / 1024)) + ' KB'; };
 
   // A media line in the text: ![description](file "caption") loop
+  // The text field of the language being edited.
+  var activeText = function () { return $(state.lang === 'it' ? 'text-it' : 'text'); };
+
   var mediaLine = function (name, flags) {
     var safe = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     return new RegExp('^[ \\t]*!\\[([^\\]]*)\\]\\(' + safe + '(?:\\s+"([^"]*)")?\\)(\\s+loop)?[ \\t]*$', flags || 'm');
@@ -159,18 +268,20 @@
 
   // Take every line for this file out of the text.
   var unlink = function (name) {
-    $('text').value = $('text').value.replace(mediaLine(name, 'gm'), '').replace(/\n{3,}/g, '\n\n').trim();
+    ['text', 'text-it'].forEach(function (id) {
+      $(id).value = $(id).value.replace(mediaLine(name, 'gm'), '').replace(/\n{3,}/g, '\n\n').trim();
+    });
   };
 
   var readLine = function (name) {
-    var match = mediaLine(name).exec($('text').value);
+    var match = mediaLine(name).exec(activeText().value);
     return match ? { alt: match[1], caption: match[2] || '', loop: !!match[3] } : null;
   };
 
   var writeLine = function (name, data) {
     var line = '![' + data.alt.replace(/[\[\]\n]/g, ' ') + '](' + name +
       (data.caption ? ' "' + data.caption.replace(/\n/g, ' ').replace(/"/g, '\u201d') + '"' : '') + ')' + (data.loop ? ' loop' : '');
-    $('text').value = $('text').value.replace(mediaLine(name), line);
+    activeText().value = activeText().value.replace(mediaLine(name), line);
   };
 
   var isVideo = function (name) { return /\.(mp4|webm|mov|m4v|ogv)$/i.test(name); };
@@ -400,6 +511,11 @@
     state.slugTouched = false;
     showAbout(false);
     $('font').value = 'helvetica';
+    $('title-it').value = '';
+    $('text-it').value = '';
+    $('translate').textContent = 'Translate from English';
+    $('translate').classList.remove('danger');
+    switchLang('en');
     $('bg-style').value = '';
     $('text-color-mode').value = '';
     showBackground();
@@ -442,7 +558,7 @@
   });
 
   var insertAtCursor = function (snippet) {
-    var area = $('text');
+    var area = activeText();
     var start = area.selectionStart == null ? area.value.length : area.selectionStart;
     var before = area.value.slice(0, start);
     var after = area.value.slice(area.selectionEnd == null ? start : area.selectionEnd);
@@ -464,7 +580,7 @@
         }
         return prepare(file, cleanName(file.name)).then(function (item) {
           var taken = function (name) {
-            return name === 'post.md' || /^cover\./.test(name) ||
+            return name === 'post.md' || name === 'post.it.md' || /^cover\./.test(name) ||
               state.media.some(function (other) { return other.name === name; }) ||
               state.existing.some(function (file) {
                 return file.name === name && state.removed.indexOf(name) < 0;
@@ -517,11 +633,17 @@
         }).catch(function () { return { content: btoa('---\ntitle: About\n---\n\n') }; });
       }),
       gh(path + ref).catch(function () { return []; }),
-      about ? gh('/contents/content/site.json' + ref) : null
+      about ? gh('/contents/content/site.json' + ref) : null,
+      gh(path + '/post.it.md' + ref).catch(function () { return null; })
     ]).then(function (found) {
       var parsed = parsePost(decode(found[0]));
       state.editing = { slug: slug, cover: about ? '' : parsed.meta.cover || '', meta: parsed.meta,
-        folder: base + '/', about: about, legacy: legacy };
+        folder: base + '/', about: about, legacy: legacy, hasIt: !!found[3] };
+      if (found[3]) {
+        var italian = parsePost(decode(found[3]));
+        $('title-it').value = italian.meta.title || '';
+        $('text-it').value = italian.body;
+      }
       if (about) {
         state.about = { site: JSON.parse(decode(found[2])) };
         $('contacts').value = (state.about.site.contact || []).map(function (link) {
@@ -568,7 +690,8 @@
       labelPublish();
       if (!about) $('cover-note').textContent = 'Current cover: ' + state.editing.cover + '. Choose a file only to replace it.';
       state.existing = (Array.isArray(found[1]) ? found[1] : []).filter(function (entry) {
-        return entry.type === 'file' && entry.name !== 'post.md' && entry.name !== state.editing.cover;
+        return entry.type === 'file' && entry.name !== 'post.md' && entry.name !== 'post.it.md' &&
+          entry.name !== state.editing.cover;
       }).map(function (entry) { return { name: entry.name, size: entry.size }; });
       renderMedia();
       showSlug();
@@ -927,6 +1050,14 @@
     var uploads = state.media.slice();
     if (state.cover) uploads.unshift(state.cover);
     var tree = [{ path: folder + 'post.md', mode: '100644', type: 'blob', content: markdown }];
+    var titleIt = $('title-it').value.trim().replace(/\s+/g, ' ');
+    var textIt = $('text-it').value.trim();
+    if (titleIt || textIt) {
+      tree.push({ path: folder + 'post.it.md', mode: '100644', type: 'blob',
+        content: '---\ntitle: ' + (titleIt || title) + '\n---\n\n' + textIt + '\n' });
+    } else if (state.editing && state.editing.hasIt) {
+      tree.push({ path: folder + 'post.it.md', mode: '100644', type: 'blob', sha: null }); // Italian version removed
+    }
     if (state.editing && state.cover && state.editing.cover && state.editing.cover !== coverName) {
       tree.push({ path: folder + state.editing.cover, mode: '100644', type: 'blob', sha: null }); // remove old cover
     }

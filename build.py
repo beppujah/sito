@@ -317,7 +317,7 @@ def publish_files(folder, target):
     """Copy a post's files to the site, with resized photos and converted videos."""
     target.mkdir(parents=True, exist_ok=True)
     for item in sorted(folder.iterdir()):
-        if not item.is_file() or item.name == "post.md" or item.name.startswith("."):
+        if not item.is_file() or item.name in ("post.md", "post.it.md") or item.name.startswith("."):
             continue
         ext = item.suffix.lower()
         if ext in VIDEO_EXT:
@@ -523,6 +523,49 @@ def page_looks(folder, meta, cover=""):
     }
 
 
+# Second language. A post (or the about page) is translated when its folder
+# has post.it.md: a header with the title, then the text. Media, background,
+# banner, font and colours come from post.md.
+LANGS = {"en": "English", "it": "Italiano"}
+WORDS = {
+    "en": {"contact": "Contact", "back": "Back to the posts",
+           "note": "Non-binary reactions.<br>Leave one, if you wish.<br>Anonymously."},
+    "it": {"contact": "Contatti", "back": "Torna ai post",
+           "note": "Reazioni non binarie.<br>Lasciane una, se vuoi.<br>In forma anonima."},
+}
+MONTHS_IT = ["gennaio", "febbraio", "marzo", "aprile", "maggio", "giugno", "luglio", "agosto",
+             "settembre", "ottobre", "novembre", "dicembre"]
+
+
+def load_translation(folder):
+    source = folder / "post.it.md" if folder else None
+    if not source or not source.exists():
+        return None
+    meta, body = split_front_matter(source.read_text("utf-8"))
+    if not body.strip() and not meta.get("title"):
+        return None
+    return {"title": meta.get("title", ""), "body": body, "description": plain_summary(body)}
+
+
+def long_date(date, lang):
+    if lang == "it":
+        return f"{date.day} {MONTHS_IT[date.month - 1]} {date.year}"
+    return f"{date.day} {date.strftime('%B %Y')}"
+
+
+def lang_switch(current, has_it):
+    """EN / IT in the top right corner; the other language links to its page."""
+    if not has_it:
+        return ""
+    other = "./" if current == "it" else "it/"  # Italian pages use <base href="../">
+    links = "".join(
+        f'<a lang="{code}" hreflang="{code}" aria-current="page">{code.upper()}</a>' if code == current
+        else f'<a href="{other}" lang="{code}" hreflang="{code}" data-lang="{code}" aria-label="{LANGS[code]}">{code.upper()}</a>'
+        for code in LANGS
+    )
+    return f'<nav class="corner corner-right lang-switch" aria-label="Language">{links}</nav>\n'
+
+
 def sort_posts(posts, order):
     """Pinned posts first; then posts not yet placed by hand (newest first);
     then the order set in the editor (site.json "order")."""
@@ -543,9 +586,10 @@ def load_about():
     if not source.exists():
         legacy = CONTENT / "about.md"
         return {"title": "About", "body": legacy.read_text("utf-8") if legacy.exists() else "", "folder": None,
-                **page_looks(folder, {})}
+                "it": None, **page_looks(folder, {})}
     meta, body = split_front_matter(source.read_text("utf-8"))
-    return {"title": meta.get("title") or "About", "body": body, "folder": folder, **page_looks(folder, meta)}
+    return {"title": meta.get("title") or "About", "body": body, "folder": folder, "it": load_translation(folder),
+            **page_looks(folder, meta)}
 
 
 def load_posts():
@@ -582,6 +626,7 @@ def load_posts():
                 "body": body,
                 "description": meta.get("description") or plain_summary(body),
                 "folder": folder,
+                "it": load_translation(folder),
                 "hidden": hidden,
                 "pinned": pinned,
                 **looks,
@@ -597,7 +642,7 @@ def load_posts():
 # --------------------------------------------------------------------------
 
 def page(site, *, title, description, root, body, body_class, version, path="", image="", head="", foot="",
-         body_style="", robots=""):
+         body_style="", robots="", lang="en", base=""):
     full_title = site["title"] if not title else f"{title} — {site['title']}"
     meta = [f'<meta property="og:title" content="{esc(title or site["title"])}">']
     if description:
@@ -615,11 +660,12 @@ def page(site, *, title, description, root, body, body_class, version, path="", 
         meta.append(f'<link rel="icon" type="image/png" href="{root}favicon.png">')
         meta.append(f'<link rel="apple-touch-icon" href="{root}apple-touch-icon.png">')
     meta.append(f'<link rel="alternate" type="application/rss+xml" title="{esc(site["title"])}" href="{root}feed.xml">')
+    base_tag = f'<base href="{base}">\n' if base else ""
     return f"""<!doctype html>
-<html lang="en">
+<html lang="{lang}">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+{base_tag}<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>{esc(full_title)}</title>
 {chr(10).join(meta)}
 <link rel="stylesheet" href="{root}assets/style.css?v={version}">
@@ -690,14 +736,14 @@ def reactions_config(site):
     ) + "</script>\n"
 
 
-def reactions_html(slug):
+def reactions_html(slug, lang="en"):
     buttons = "".join(
         f'<button class="reaction" type="button" data-kind="{kind}" aria-pressed="false" '
         f'aria-label="{kind.capitalize()}" title="{kind.capitalize()}">{ICONS[kind]}'
         '<span class="count"></span></button>'
         for kind in REACTIONS
     )
-    note = "Non-binary reactions.<br>Leave one, if you wish.<br>Anonymously."
+    note = WORDS[lang]["note"]
     return (
         f'<section class="reactions-box"><div class="reactions" data-post="{esc(slug)}" role="group" '
         f'aria-label="Reactions" aria-describedby="reactions-note">{buttons}'
@@ -736,53 +782,61 @@ def apply_looks(item, version, root):
     return body_class, style, head, intro, banner_block
 
 
-def post_page(site, post, version):
+def post_page(site, post, version, lang="en"):
     date = post["date"]
     cover = quote(post["cover"])
     folder = post["folder"]
+    it = post["it"] if lang == "it" else None
+    title = (it and it["title"]) or post["title"]
+    text = it["body"] if it else post["body"]
     body_class, style, head, intro, banner_block = apply_looks(post, version, "../../")
-    body = f"""<a class="corner corner-left" href="../../" data-back aria-label="Back to the posts">{ICONS["back"]}</a>
-{intro}<main id="post">
+    body = f"""<a class="corner corner-left" href="../../" data-back aria-label="{WORDS[lang]["back"]}">{ICONS["back"]}</a>
+{lang_switch(lang, bool(post["it"]))}{intro}<main id="post">
 <article class="post">
 {banner_block}<header class="post-head">
-<h1>{esc(post["title"])}</h1>
-<time datetime="{date.isoformat()}">{date.day} {date.strftime("%B %Y")}</time>
+<h1>{esc(title)}</h1>
+<time datetime="{date.isoformat()}">{long_date(date, lang)}</time>
 </header>
 <div class="post-body">
-{render_markdown(post["body"], folder)}
+{render_markdown(text, folder)}
 </div>
 </article>
-{reactions_html(post["slug"])}
+{reactions_html(post["slug"], lang)}
 </main>"""
     foot = reactions_config(site)
     slug = quote(post["slug"])
-    return page(site, title=post["title"], description=post["description"], root="../../", body=body,
-                body_class=body_class, version=version, path=f"posts/{slug}/",
+    return page(site, title=title, description=it["description"] if it else post["description"], root="../../",
+                body=body, body_class=body_class, version=version,
+                path=f"posts/{slug}/" + ("it/" if lang == "it" else ""),
                 image=f"posts/{slug}/{cover}", head=head, foot=foot, body_style=";".join(style),
-                robots="noindex" if post["hidden"] else "")
+                robots="noindex" if post["hidden"] else "", lang=lang, base="../" if lang == "it" else "")
 
 
-def about_page(site, about, version):
+def about_page(site, about, version, lang="en"):
+    it = about["it"] if lang == "it" else None
+    title = (it and it["title"]) or about["title"]
+    text = it["body"] if it else about["body"]
     body_class, style, head, intro, banner_block = apply_looks(about, version, "../")
     links = "".join(
         f'<li><a href="{esc(link.get("url", ""))}">{esc(link.get("label", ""))}</a></li>'
         for link in site.get("contact", [])
     )
-    contact = f'<h2 id="contact">Contact</h2>\n<ul class="links">{links}</ul>' if links else ""
-    body = f"""<a class="corner corner-left" href="../" data-back aria-label="Back to the posts">{ICONS["back"]}</a>
-{intro}<main id="post">
+    contact = f'<h2 id="contact">{WORDS[lang]["contact"]}</h2>\n<ul class="links">{links}</ul>' if links else ""
+    body = f"""<a class="corner corner-left" href="../" data-back aria-label="{WORDS[lang]["back"]}">{ICONS["back"]}</a>
+{lang_switch(lang, bool(about["it"]))}{intro}<main id="post">
 <article class="post">
 {banner_block}<header class="post-head">
-<h1>{esc(about["title"])}</h1>
+<h1>{esc(title)}</h1>
 </header>
 <div class="post-body">
-{render_markdown(about["body"], about["folder"])}
+{render_markdown(text, about["folder"])}
 {contact}
 </div>
 </article>
 </main>"""
-    return page(site, title=about["title"], description=site["description"], root="../", body=body,
-                body_class=body_class, version=version, path="about/", head=head, body_style=";".join(style))
+    return page(site, title=title, description=site["description"], root="../", body=body,
+                body_class=body_class, version=version, path="about/" + ("it/" if lang == "it" else ""),
+                head=head, body_style=";".join(style), lang=lang, base="../" if lang == "it" else "")
 
 
 def not_found_page(site, version):
@@ -815,7 +869,12 @@ def admin_page(site, version):
 </details>
 <label>Post<select id="post"><option value="">New post</option><option value="@about">About page</option><option value="@settings">Site settings</option><option value="@bulk">All posts: hide, show, delete</option></select></label>
 <div class="post-only">
-<label>Title<input id="title" autocomplete="off"></label>
+<div class="lang-tabs" role="tablist" aria-label="Language of title and text">
+<button type="button" role="tab" id="tab-en" aria-selected="true">English</button>
+<button type="button" role="tab" id="tab-it" aria-selected="false">Italiano</button>
+</div>
+<label class="lang-en">Title<input id="title" autocomplete="off"></label>
+<label class="lang-it" hidden>Titolo (italiano)<input id="title-it" autocomplete="off" lang="it"></label>
 <div class="not-about">
 <label>Date<input id="date" type="date"></label>
 <label>Address<input id="slug" autocapitalize="off" autocomplete="off"></label>
@@ -825,7 +884,12 @@ def admin_page(site, version):
 </div>
 </div>
 <div class="text-block">
-<label>Text<textarea id="text" rows="14"></textarea></label>
+<label class="lang-en">Text<textarea id="text" rows="14"></textarea></label>
+<label class="lang-it" hidden>Testo (italiano)<textarea id="text-it" rows="14" lang="it"></textarea></label>
+<div class="lang-it" hidden>
+<button class="button quiet" id="translate" type="button">Translate from English</button>
+<p class="hint">Automatic translation (MyMemory, free). Check it before publishing. Leave both Italian fields empty for no Italian version.</p>
+</div>
 <p class="hint">Blank line for a new paragraph. **bold**, [link text](https://…), ## heading. A YouTube or Vimeo link on its own line becomes a player. Use "text" next to a file below for its description and caption.</p>
 </div>
 <div class="settings-only" hidden>
@@ -991,12 +1055,16 @@ def build():
     if about["folder"]:
         publish_files(about["folder"], OUT / "about")
     write(OUT / "about" / "index.html", about_page(site, about, version))
+    if about["it"]:
+        write(OUT / "about" / "it" / "index.html", about_page(site, about, version, "it"))
     write(OUT / "404.html", not_found_page(site, version))
     write(OUT / "admin" / "index.html", admin_page(site, version))
     shutil.copy2(SRC / "admin.js", OUT / "admin" / "admin.js")
 
     for post in everything:
         write(OUT / "posts" / post["slug"] / "index.html", post_page(site, post, version))
+        if post["it"]:
+            write(OUT / "posts" / post["slug"] / "it" / "index.html", post_page(site, post, version, "it"))
 
     # Read by the editor; hidden posts are listed here so they can be reopened.
     index = [

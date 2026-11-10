@@ -72,6 +72,12 @@ https://www.youtube.com/watch?v=XXXXXXXXXXX
 - `background: #1d2a33` gives the post a solid colour instead.
 - `text-color: #8a3b12` sets the text colour; without it each background picks
   black or white.
+- `post.it.md` next to `post.md` is the Italian version (a header with `title:`,
+  then the text). The post then gets an EN / IT switch and a second address,
+  `posts/<name>/it/`. Media, background and the other options come from
+  `post.md`. The editor has English / Italiano tabs and a "Translate from
+  English" button (MyMemory, free, to be checked by hand). The about page works
+  the same way.
 - `banner: photo.jpg` shows that image above the title. The cover itself is only
   used on the home page.
 - `font: oswald` or `font: typewriter` (Courier Prime) changes the post's font;

@@ -5,15 +5,40 @@
   var reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   /* ------------------------------------------------------------------
+     Language: the EN / IT switch on posts and the about page. The choice
+     is remembered, so the next translated page opens in that language.
+     ------------------------------------------------------------------ */
+  var langLinks = document.querySelectorAll('.lang-switch a[data-lang]');
+  Array.prototype.forEach.call(langLinks, function (link) {
+    link.addEventListener('click', function () {
+      try { localStorage.setItem('lang', link.dataset.lang); } catch (e) {}
+    });
+  });
+  var wanted = null;
+  try { wanted = localStorage.getItem('lang'); } catch (e) {}
+  if (wanted && wanted !== root.lang) {
+    var other = document.querySelector('.lang-switch a[data-lang="' + wanted + '"]');
+    if (other) location.replace(other.href);
+  }
+
+  /* ------------------------------------------------------------------
      Back arrow: return to where the visitor came from (same view and
      scroll position) when they arrived from inside the site.
      ------------------------------------------------------------------ */
   document.querySelectorAll('[data-back]').forEach(function (link) {
     link.addEventListener('click', function (event) {
       var from = document.referrer;
-      if (from && from.indexOf(location.origin) === 0 && history.length > 1) {
+      // The same page in the other language does not count as "where you came from".
+      var page = function (path) { return path.replace(/it\/$/, ''); };
+      var fromPath = '';
+      try { fromPath = new URL(from).pathname; } catch (e) {}
+      if (from && from.indexOf(location.origin) === 0 && history.length > 1 &&
+          page(fromPath) !== page(location.pathname)) {
         event.preventDefault();
         history.back();
+      } else {
+        // Plain link to the home page: ask it to reopen on the same photo and view.
+        try { sessionStorage.setItem('feed-return', '1'); } catch (e) {}
       }
     });
   });
@@ -180,6 +205,7 @@
       var index = root.dataset.mode === 'index' ? lastIndex : currentIndex();
       if (mode === 'index') lastIndex = index;
       root.dataset.mode = mode;
+      try { sessionStorage.setItem('feed-mode', mode); } catch (e) {}
       history.replaceState(null, '', mode === 'full' ? location.pathname + location.search : '#' + mode);
       sizes();
       if (mode === 'index') window.scrollTo(0, 0);
@@ -265,7 +291,18 @@
       if (saved && window.scrollY < 2) goTo(saved);
     };
     var nav = window.performance && performance.getEntriesByType ? performance.getEntriesByType('navigation')[0] : null;
-    if (nav && nav.type === 'back_forward') restore();
+    var returning = false;
+    try { returning = sessionStorage.getItem('feed-return') === '1'; sessionStorage.removeItem('feed-return'); } catch (e) {}
+    if (returning) {
+      var lastMode = null;
+      try { lastMode = sessionStorage.getItem('feed-mode'); } catch (e) {}
+      if (lastMode && lastMode !== root.dataset.mode && /^(full|grid|index)$/.test(lastMode)) {
+        root.dataset.mode = lastMode;
+        history.replaceState(null, '', lastMode === 'full' ? location.pathname : '#' + lastMode);
+        sizes();
+      }
+    }
+    if (returning || (nav && nav.type === 'back_forward')) restore();
     window.addEventListener('pageshow', function (event) { if (event.persisted) restore(); });
     label();
   }
