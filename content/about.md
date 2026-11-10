@@ -1,5 +1,6 @@
-Placeholder text. Replace it with a short introduction: who you are, what you make, and what a visitor will find here.
+This website is an attempt to make a record of my work in a safe and comfortable environment, but also a place to post some randomness.
 
-A second paragraph can go deeper: tools, materials, current projects.
+The app that runs the site is made with Claude LLM and it’s code is avaliable at the  github repository [github.com/beppujah/sito](https://github.com/beppujah/sito)
 
-You can [support me on Ko-fi](https://ko-fi.com/beppujah)
+
+If you want to support my work, you can buy me a [coffee](https://ko-fi.com/beppujah)
