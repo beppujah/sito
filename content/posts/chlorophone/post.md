@@ -2,7 +2,6 @@
 title: Chlorophone
 date: 2026-11-10
 cover: cover.jpg
-pinned: true
 ---
 
 I could have been vibe coding a firmware for some random pocket synth, instead I spent the last 2 months creating this new machine.
