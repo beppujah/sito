@@ -13,6 +13,7 @@ import html
 import json
 import re
 import shutil
+import struct
 import sys
 import unicodedata
 from pathlib import Path
@@ -30,6 +31,13 @@ AUDIO_EXT = {".mp3", ".wav", ".ogg", ".oga", ".m4a", ".aac", ".flac", ".opus"}
 
 # Reaction kinds, in display order. Keep in sync with reactions.sql.
 TRUE = ("true", "yes", "1")
+
+# Fonts a post can use: name -> Google Fonts stylesheet (None: system font).
+FONTS = {
+    "helvetica": None,
+    "oswald": "https://fonts.googleapis.com/css2?family=Oswald:wght@300;500&display=swap",
+    "typewriter": "https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap",
+}
 
 REACTIONS = ["sun", "moon", "rain", "cloud", "leaf", "water", "wind"]
 
@@ -127,6 +135,87 @@ def split_front_matter(raw):
 
 
 # --------------------------------------------------------------------------
+# Image sizes, read from the file headers (so the page can reserve the space
+# and show a loading indicator before the image arrives)
+# --------------------------------------------------------------------------
+
+def _jpeg_orientation(app1):
+    """EXIF orientation from a JPEG APP1 segment, 1 when absent."""
+    if not app1.startswith(b"Exif\0\0"):
+        return 1
+    tiff = app1[6:]
+    order = "<" if tiff[:2] == b"II" else ">"
+    try:
+        offset = struct.unpack(order + "I", tiff[4:8])[0]
+        count = struct.unpack(order + "H", tiff[offset:offset + 2])[0]
+        for i in range(count):
+            entry = tiff[offset + 2 + i * 12: offset + 14 + i * 12]
+            if struct.unpack(order + "H", entry[:2])[0] == 0x0112:
+                return struct.unpack(order + "H", entry[8:10])[0]
+    except (struct.error, IndexError):
+        pass
+    return 1
+
+
+def image_size(path):
+    """(width, height) as displayed, or None if unknown."""
+    try:
+        data = path.read_bytes()
+    except OSError:
+        return None
+    try:
+        if data[:8] == b"\x89PNG\r\n\x1a\n":
+            return struct.unpack(">II", data[16:24])
+        if data[:6] in (b"GIF87a", b"GIF89a"):
+            return struct.unpack("<HH", data[6:10])
+        if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+            kind = data[12:16]
+            if kind == b"VP8X":
+                return (int.from_bytes(data[24:27], "little") + 1, int.from_bytes(data[27:30], "little") + 1)
+            if kind == b"VP8 ":
+                w, h = struct.unpack("<HH", data[26:30])
+                return (w & 0x3FFF, h & 0x3FFF)
+            if kind == b"VP8L":
+                bits = int.from_bytes(data[21:25], "little")
+                return ((bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1)
+        if data[:2] == b"\xff\xd8":
+            i, orientation = 2, 1
+            while i < len(data) - 9:
+                if data[i] != 0xFF:
+                    i += 1
+                    continue
+                marker = data[i + 1]
+                if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
+                    i += 2
+                    continue
+                length = struct.unpack(">H", data[i + 2:i + 4])[0]
+                if marker == 0xE1 and orientation == 1:
+                    orientation = _jpeg_orientation(data[i + 4:i + 2 + length])
+                if 0xC0 <= marker <= 0xCF and marker not in (0xC4, 0xC8, 0xCC):
+                    h, w = struct.unpack(">HH", data[i + 5:i + 9])
+                    return (h, w) if orientation >= 5 else (w, h)
+                i += 2 + length
+        if path.suffix.lower() == ".svg":
+            match = re.search(rb'viewBox="\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)[\s,]+([\d.]+)', data[:2000])
+            if match:
+                return (round(float(match.group(1))), round(float(match.group(2))))
+    except (struct.error, ValueError):
+        pass
+    return None
+
+
+def img_tag(src, alt="", folder=None, lazy=True, cls=""):
+    """<img> with width/height (and a --ratio for CSS) when the file can be read."""
+    attrs = f' class="{cls}"' if cls else ""
+    size = image_size(folder / src) if folder and "/" not in src and ":" not in src else None
+    if size and size[0] and size[1]:
+        attrs += f' width="{size[0]}" height="{size[1]}" style="--ratio:{size[0] / size[1]:.4f}"'
+    if lazy:
+        attrs += ' loading="lazy"'
+    return f'<img src="{esc(quote(src))}" alt="{esc(alt)}"{attrs}>'
+
+
+# --------------------------------------------------------------------------
 # Markdown (small subset: paragraphs, headings, lists, links, bold, code,
 # images / video / audio on their own line, YouTube and Vimeo links)
 # --------------------------------------------------------------------------
@@ -157,14 +246,14 @@ def inline(text):
     return text
 
 
-def media_html(src, alt=""):
+def media_html(src, alt="", folder=None):
     ext = Path(src.split("?")[0]).suffix.lower()
-    source, alt = esc(src), esc(alt)
+    source = esc(src)
     if ext in VIDEO_EXT:
         return f'<figure><video src="{source}" controls playsinline preload="metadata"></video></figure>'
     if ext in AUDIO_EXT:
         return f'<figure class="audio"><audio src="{source}" controls preload="metadata"></audio></figure>'
-    return f'<figure><img src="{source}" alt="{alt}" loading="lazy"></figure>'
+    return f"<figure>{img_tag(src, alt, folder)}</figure>"
 
 
 def embed_html(url):
@@ -175,7 +264,7 @@ def embed_html(url):
     )
 
 
-def render_markdown(body):
+def render_markdown(body, folder=None):
     out, para, items = [], [], []
 
     def flush():
@@ -194,7 +283,7 @@ def render_markdown(body):
         match = MEDIA_LINE.match(text)
         if match:
             flush()
-            out.append(media_html(match.group(2), match.group(1)))
+            out.append(media_html(match.group(2), match.group(1), folder))
             continue
         match = YOUTUBE.match(text)
         if match:
@@ -276,7 +365,6 @@ def load_posts():
         meta, body = split_front_matter(source.read_text("utf-8"))
         hidden = meta.get("draft", "").lower() in TRUE
         pinned = meta.get("pinned", "").lower() in TRUE
-        background = meta.get("background", "").lower() in TRUE
         cover = meta.get("cover", "")
         if not cover:
             found = sorted(f.name for f in folder.glob("cover.*"))
@@ -284,6 +372,20 @@ def load_posts():
         if not cover or not (folder / cover).exists():
             warn(f"{folder.name}: cover image missing, skipped")
             continue
+        # background / banner: a file of the post folder, or "true" for the cover.
+        def pick(key):
+            value = meta.get(key, "")
+            if not value or value.lower() in ("false", "no", "0", "none"):
+                return ""
+            name = cover if value.lower() in TRUE else value
+            if not (folder / name).exists():
+                warn(f"{folder.name}: {key} image {name} not found, ignored")
+                return ""
+            return name
+        background, banner = pick("background"), pick("banner")
+        font = meta.get("font", "").lower()
+        if font not in FONTS:
+            font = "helvetica"
         try:
             date = datetime.date.fromisoformat(meta.get("date", "")[:10])
         except ValueError:
@@ -301,6 +403,8 @@ def load_posts():
                 "hidden": hidden,
                 "pinned": pinned,
                 "background": background,
+                "banner": banner,
+                "font": font,
             }
         )
     # Pinned posts first, then newest first.
@@ -386,28 +490,32 @@ def reactions_html(slug):
 def post_page(site, post, version):
     date = post["date"]
     cover = quote(post["cover"])
+    folder = post["folder"]
+    body_class = f"page font-{post['font']}"
+    head = ""
+    if FONTS[post["font"]]:
+        head += ('<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
+                 f'<link rel="stylesheet" href="{FONTS[post["font"]]}">\n')
+    intro = ""
     if post["background"]:
-        # The cover fills the screen; a tap shows the text over a faded copy of it.
-        intro = f"""<div class="post-bg" aria-hidden="true"><img src="{cover}" alt=""></div>
-<button class="reveal" type="button" aria-controls="post" aria-label="Show the text"></button>
-"""
-        cover_block = ""
-        body_class = "page has-bg"
-        head = "<script>document.documentElement.classList.add('js')</script>\n"
-    else:
-        intro = ""
-        cover_block = f'<div class="post-cover"><img src="{cover}" alt=""></div>\n'
-        body_class = "page"
-        head = ""
+        # The background image fills the screen; a tap shows the text over a faded copy of it.
+        intro = (f'<div class="post-bg" aria-hidden="true">{img_tag(post["background"], "", folder, lazy=False)}</div>\n'
+                 '<button class="reveal" type="button" aria-controls="post" aria-label="Show the text"></button>\n')
+        body_class += " has-bg"
+        head += "<script>document.documentElement.classList.add('js')</script>\n"
+    banner_block = ""
+    if post["banner"]:
+        banner_block = f'<div class="post-banner">{img_tag(post["banner"], "", folder, lazy=False)}</div>\n'
+        body_class += " has-banner"
     body = f"""<a class="corner corner-left" href="../../" data-back aria-label="Back">{ICONS["back"]}</a>
 {intro}<main id="post">
 <article class="post">
-{cover_block}<header class="post-head">
+{banner_block}<header class="post-head">
 <h1>{esc(post["title"])}</h1>
 <time datetime="{date.isoformat()}">{date.day} {date.strftime("%B %Y")}</time>
 </header>
 <div class="post-body">
-{render_markdown(post["body"])}
+{render_markdown(post["body"], folder)}
 </div>
 </article>
 {reactions_html(post["slug"])}
@@ -468,20 +576,33 @@ def admin_page(site, version):
 <label>Access token<input id="token" type="password" autocomplete="off"></label>
 <p class="hint">A fine-grained GitHub token limited to this repository, with read and write access to Contents. It is kept in this browser only and sent only to api.github.com.</p>
 </details>
-<label>Post<select id="post"><option value="">New post</option></select></label>
+<label>Post<select id="post"><option value="">New post</option><option value="@about">About page</option></select></label>
+<div class="post-only">
 <label>Title<input id="title" autocomplete="off"></label>
 <label>Date<input id="date" type="date"></label>
 <label>Address<input id="slug" autocapitalize="off" autocomplete="off"></label>
 <p class="hint" id="slug-note"></p>
-<label>Cover image<input id="cover" type="file" accept="image/*"></label>
+<label>Cover image (home page)<input id="cover" type="file" accept="image/*"></label>
 <p class="hint" id="cover-note"></p>
+</div>
 <label>Text<textarea id="text" rows="14"></textarea></label>
 <p class="hint">Blank line for a new paragraph. **bold**, [link text](https://…), ## heading. A YouTube or Vimeo link on its own line becomes a player.</p>
+<div class="about-only" hidden>
+<label>Contact links, one per line: label | address<textarea id="contacts" rows="5" autocapitalize="off"></textarea></label>
+<p class="hint">For example: Email | mailto:name@example.com</p>
+</div>
+<div class="post-only">
 <label>Add images, video or audio at the cursor<input id="media" type="file" multiple accept="image/*,video/*,audio/*"></label>
 <ul class="links" id="media-list"></ul>
+<p class="hint">bg: the post opens on this image, full screen; a tap shows the text over a faded copy of it. banner: shown above the title. One of each per post, or none. Flagged images are taken out of the text.</p>
+<label>Font<select id="font">
+<option value="helvetica">Helvetica</option>
+<option value="oswald">Oswald</option>
+<option value="typewriter">Typewriter (Courier Prime)</option>
+</select></label>
 <label class="check"><input id="hidden" type="checkbox">Hidden (draft): saved, but not shown on the site</label>
 <label class="check"><input id="pinned" type="checkbox">Pinned to the top</label>
-<label class="check"><input id="background" type="checkbox">Cover as background: the post opens on the cover, a tap shows the text over it</label>
+</div>
 <div class="actions">
 <button class="button" id="publish" type="button">Publish</button>
 <button class="button quiet" id="delete" type="button" hidden>Delete post</button>
@@ -541,7 +662,7 @@ def build():
     # Read by the editor; hidden posts are listed here so they can be reopened.
     index = [
         {"slug": p["slug"], "title": p["title"], "date": p["date"].isoformat(), "cover": p["cover"],
-         "hidden": p["hidden"], "pinned": p["pinned"], "background": p["background"]}
+         "hidden": p["hidden"], "pinned": p["pinned"]}
         for p in everything
     ]
     write(OUT / "posts.json", json.dumps(index, ensure_ascii=False, indent=1))

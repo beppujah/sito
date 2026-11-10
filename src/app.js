@@ -165,7 +165,17 @@
   }
 
   /* ------------------------------------------------------------------
-     Post with the cover as background: a tap (or scrolling down) shows
+     Images: mark them once loaded, so the loading spinner behind them
+     goes away (it would show through transparent images).
+     ------------------------------------------------------------------ */
+  Array.prototype.forEach.call(document.images, function (img) {
+    var done = function () { img.classList.add('loaded'); };
+    if (img.complete && img.naturalWidth) done();
+    else img.addEventListener('load', done, { once: true });
+  });
+
+  /* ------------------------------------------------------------------
+     Post with a background image: a tap (or scrolling down) shows
      the text over a faded cover; a tap on an empty area, or Escape,
      goes back to the plain cover.
      ------------------------------------------------------------------ */

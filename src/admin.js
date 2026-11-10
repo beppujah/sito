@@ -11,7 +11,11 @@
   var $ = function (id) { return document.getElementById(id); };
   // media: new files to upload. existing: files already in the post folder.
   // removed: names of existing files to delete on publish.
-  var state = { posts: [], editing: null, cover: null, media: [], existing: [], removed: [], slugTouched: false };
+  // flags: which image is the background and which the banner ("@cover" = the cover).
+  var state = {
+    posts: [], editing: null, cover: null, media: [], existing: [], removed: [],
+    flags: { background: null, banner: null }, about: null, slugTouched: false
+  };
 
   /* ---------------- settings ---------------- */
 
@@ -133,37 +137,85 @@
     $('text').value = $('text').value.replace(line, '').replace(/\n{3,}/g, '\n\n').trim();
   };
 
+  var isImage = function (name) { return /\.(jpe?g|png|webp|gif|avif|svg|heic|heif)$/i.test(name); };
+
+  var coverName = function () {
+    return state.cover ? state.cover.name : (state.editing ? state.editing.cover : '');
+  };
+
+  var FLAGS = [['background', 'bg'], ['banner', 'banner']];
+
   var renderMedia = function () {
     var list = $('media-list');
     list.textContent = '';
-    var rows = state.existing
+    var rows = [];
+    if (coverName()) rows.push({ name: coverName(), key: '@cover', cover: true, size: state.cover ? state.cover.blob.size : null });
+    rows = rows.concat(state.existing
       .filter(function (file) { return state.removed.indexOf(file.name) < 0; })
-      .map(function (file) { return { name: file.name, size: file.size, existing: true }; })
-      .concat(state.media.map(function (item) { return { name: item.name, size: item.blob.size, item: item }; }));
+      .map(function (file) { return { name: file.name, key: file.name, size: file.size, existing: true }; }))
+      .concat(state.media.map(function (item) { return { name: item.name, key: item.name, size: item.blob.size, item: item }; }));
     rows.forEach(function (entry) {
       var row = document.createElement('li');
       var name = document.createElement('span');
+      name.className = 'name';
       name.textContent = entry.name;
       var size = document.createElement('span');
       size.className = 'size';
-      size.textContent = kb(entry.size) + (entry.item ? ', new' : '');
+      size.textContent = entry.cover ? 'cover' : kb(entry.size) + (entry.item ? ', new' : '');
+      row.appendChild(name);
+      row.appendChild(size);
+      if (isImage(entry.name)) {
+        FLAGS.forEach(function (flag) {
+          var button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'flag';
+          button.textContent = flag[1];
+          var on = state.flags[flag[0]] === entry.key;
+          button.setAttribute('aria-pressed', on ? 'true' : 'false');
+          button.setAttribute('aria-label', 'Use ' + entry.name + ' as ' + flag[0]);
+          button.addEventListener('click', function () {
+            if (on) {
+              state.flags[flag[0]] = null;
+              status(entry.name + ' is no longer the ' + flag[0] + '.');
+            } else {
+              state.flags[flag[0]] = entry.key;
+              if (!entry.cover) unlink(entry.name);
+              status(entry.name + ' is the ' + flag[0] + (entry.cover ? '.' : ', and was taken out of the text.'));
+            }
+            renderMedia();
+          });
+          row.appendChild(button);
+        });
+      }
       var remove = document.createElement('button');
       remove.type = 'button';
       remove.className = 'remove';
       remove.textContent = '\u00d7';
       remove.setAttribute('aria-label', 'Remove ' + entry.name);
+      if (entry.cover) remove.style.visibility = 'hidden'; // the cover can only be replaced
       remove.addEventListener('click', function () {
         if (entry.item) state.media.splice(state.media.indexOf(entry.item), 1);
         else state.removed.push(entry.name);
+        FLAGS.forEach(function (flag) { if (state.flags[flag[0]] === entry.key) state.flags[flag[0]] = null; });
         unlink(entry.name);
         renderMedia();
         status(entry.name + ' removed' + (entry.existing ? '. It is deleted when you publish.' : '.'));
       });
-      row.appendChild(name);
-      row.appendChild(size);
       row.appendChild(remove);
       list.appendChild(row);
     });
+  };
+
+  // Switch the form between a post and the about page.
+  var showAbout = function (on) {
+    Array.prototype.forEach.call(document.querySelectorAll('.post-only'), function (el) { el.hidden = on; });
+    Array.prototype.forEach.call(document.querySelectorAll('.about-only'), function (el) { el.hidden = !on; });
+    if (on) $('delete').hidden = true;
+  };
+
+  var decode = function (file) {
+    var bytes = Uint8Array.from(atob(file.content.replace(/\s/g, '')), function (c) { return c.charCodeAt(0); });
+    return new TextDecoder().decode(bytes);
   };
 
   var isTrue = function (value) { return /^(true|yes|1)$/i.test(value || ''); };
@@ -181,7 +233,7 @@
   // Rebuild the "Post" list from state.posts.
   var listPosts = function () {
     var select = $('post');
-    while (select.options.length > 1) select.remove(1);
+    while (select.options.length > 2) select.remove(2); // keep "New post" and "About page"
     state.posts.forEach(function (post) {
       var option = document.createElement('option');
       option.value = post.slug;
@@ -197,11 +249,15 @@
     state.media = [];
     state.existing = [];
     state.removed = [];
+    state.flags = { background: null, banner: null };
+    state.about = null;
     state.slugTouched = false;
+    showAbout(false);
+    $('font').value = 'helvetica';
+    $('contacts').value = '';
     ['title', 'slug', 'text', 'cover', 'media'].forEach(function (id) { $(id).value = ''; });
     $('hidden').checked = false;
     $('pinned').checked = false;
-    $('background').checked = true; // new posts open on their cover by default
     $('delete').hidden = true;
     disarmDelete();
     labelPublish();
@@ -230,6 +286,7 @@
     prepare(file, 'cover.' + (extension(cleanName(file.name)) || 'jpg')).then(function (item) {
       state.cover = item;
       $('cover-note').textContent = 'New cover: ' + Math.round(item.blob.size / 1024) + ' KB';
+      renderMedia();
     });
   });
 
@@ -288,14 +345,13 @@
     reset();
     if (!slug) return;
     status('Loading…');
+    if (slug === '@about') return loadAbout();
     var path = '/contents/content/posts/' + encodeURIComponent(slug) + '/post.md?ref=' +
       encodeURIComponent($('branch').value.trim() || 'main');
     var folderPath = '/contents/content/posts/' + encodeURIComponent(slug) + '?ref=' +
       encodeURIComponent($('branch').value.trim() || 'main');
     Promise.all([gh(path), gh(folderPath)]).then(function (found) {
-      var file = found[0];
-      var bytes = Uint8Array.from(atob(file.content.replace(/\s/g, '')), function (c) { return c.charCodeAt(0); });
-      var parsed = parsePost(new TextDecoder().decode(bytes));
+      var parsed = parsePost(decode(found[0]));
       state.editing = { slug: slug, cover: parsed.meta.cover || '', meta: parsed.meta };
       $('title').value = parsed.meta.title || '';
       $('date').value = (parsed.meta.date || today()).slice(0, 10);
@@ -304,7 +360,13 @@
       $('text').value = parsed.body;
       $('hidden').checked = isTrue(parsed.meta.draft);
       $('pinned').checked = isTrue(parsed.meta.pinned);
-      $('background').checked = isTrue(parsed.meta.background);
+      var cover = state.editing.cover;
+      FLAGS.forEach(function (flag) {
+        var value = parsed.meta[flag[0]] || '';
+        state.flags[flag[0]] = !value || /^(false|no|0|none)$/i.test(value) ? null
+          : isTrue(value) || value === cover ? '@cover' : value;
+      });
+      $('font').value = /^(oswald|typewriter)$/.test(parsed.meta.font || '') ? parsed.meta.font : 'helvetica';
       $('delete').hidden = false;
       labelPublish();
       $('cover-note').textContent = 'Current cover: ' + state.editing.cover + '. Choose a file only to replace it.';
@@ -320,9 +382,77 @@
     });
   });
 
+  /* ---------------- about page ---------------- */
+
+  var loadAbout = function () {
+    var ref = '?ref=' + encodeURIComponent($('branch').value.trim() || 'main');
+    Promise.all([
+      gh('/contents/content/about.md' + ref).catch(function () { return null; }),
+      gh('/contents/content/site.json' + ref)
+    ]).then(function (found) {
+      var site = JSON.parse(decode(found[1]));
+      state.about = { site: site };
+      showAbout(true);
+      $('text').value = found[0] ? decode(found[0]).trim() : '';
+      $('contacts').value = (site.contact || []).map(function (link) {
+        return link.label + ' | ' + link.url;
+      }).join('\n');
+      labelPublish();
+      status('');
+    }).catch(function (error) {
+      $('post').value = '';
+      showAbout(false);
+      status(error.message, true);
+    });
+  };
+
+  var publishAbout = function () {
+    if (!$('token').value.trim()) {
+      $('settings').open = true;
+      return status('Set the access token under Connection.', true);
+    }
+    var contacts = [];
+    var bad = '';
+    $('contacts').value.split('\n').forEach(function (line) {
+      if (!line.trim()) return;
+      var at = line.indexOf('|');
+      var label = at > 0 ? line.slice(0, at).trim() : '';
+      var url = at > 0 ? line.slice(at + 1).trim() : '';
+      if (!label || !url) bad = bad || line.trim();
+      else contacts.push({ label: label, url: url });
+    });
+    if (bad) return status('This contact line needs "label | address": ' + bad, true);
+    var site = state.about.site;
+    site.contact = contacts;
+    var branch = $('branch').value.trim() || 'main';
+    var head;
+    $('publish').disabled = true;
+    status('Saving…');
+    gh('/git/ref/heads/' + encodeURIComponent(branch)).then(function (ref) {
+      head = ref.object.sha;
+      return gh('/git/commits/' + head);
+    }).then(function (commit) {
+      return gh('/git/trees', 'POST', { base_tree: commit.tree.sha, tree: [
+        { path: 'content/about.md', mode: '100644', type: 'blob', content: $('text').value.trim() + '\n' },
+        { path: 'content/site.json', mode: '100644', type: 'blob', content: JSON.stringify(site, null, 2) + '\n' }
+      ] });
+    }).then(function (tree) {
+      return gh('/git/commits', 'POST', { message: 'Update about page', tree: tree.sha, parents: [head] });
+    }).then(function (commit) {
+      return gh('/git/refs/heads/' + encodeURIComponent(branch), 'PATCH', { sha: commit.sha });
+    }).then(function () {
+      status('Published. The about page updates in about a minute.');
+    }).catch(function (error) {
+      status(error.message, true);
+    }).then(function () {
+      $('publish').disabled = false;
+    });
+  };
+
   /* ---------------- publish ---------------- */
 
   $('publish').addEventListener('click', function () {
+    if (state.about) return publishAbout();
     var title = $('title').value.trim().replace(/\s+/g, ' ');
     var slug = state.editing ? state.editing.slug : slugify($('slug').value);
     var date = $('date').value || today();
@@ -348,10 +478,14 @@
     var front = ['title: ' + title, 'date: ' + date, 'cover: ' + coverName];
     if (hidden) front.push('draft: true');
     if (pinned) front.push('pinned: true');
-    if ($('background').checked) front.push('background: true');
+    FLAGS.forEach(function (flag) {
+      var key = state.flags[flag[0]];
+      if (key) front.push(flag[0] + ': ' + (key === '@cover' ? coverName : key));
+    });
+    if ($('font').value !== 'helvetica') front.push('font: ' + $('font').value);
     if (state.editing) {
       Object.keys(state.editing.meta).forEach(function (key) { // keep any other field
-        if (['title', 'date', 'cover', 'draft', 'pinned', 'background'].indexOf(key) < 0) {
+        if (['title', 'date', 'cover', 'draft', 'pinned', 'background', 'banner', 'font'].indexOf(key) < 0) {
           front.push(key + ': ' + state.editing.meta[key]);
         }
       });

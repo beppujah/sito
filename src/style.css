@@ -12,6 +12,8 @@
   --column-ratio: 0.75;   /* home on big screens: column width = screen height x this (0.75 = 3:4) */
   --icon: 26px;           /* corner icon size */
   --column: min(100vw, calc(100vh * var(--column-ratio)));
+  /* Small spinner shown where an image is still loading. */
+  --spinner: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='9' fill='none' stroke='%238c8c8c' stroke-width='1.2' stroke-linecap='round' stroke-dasharray='14 43'%3E%3CanimateTransform attributeName='transform' type='rotate' from='0 12 12' to='360 12 12' dur='0.9s' repeatCount='indefinite'/%3E%3C/circle%3E%3C/svg%3E");
   /* Cover used as a post background, behind the text: almost no colour, low contrast, light. */
   --bg-filter: grayscale(0.92) contrast(0.26) brightness(1.7) blur(2px);
   --bg-ink-soft: #3d3d3d;  /* secondary text (date, reaction icons) over that background */
@@ -80,7 +82,7 @@ html[data-mode="full"] { scroll-snap-type: y mandatory; }
   margin-inline: auto;
 }
 
-.item { display: block; overflow: hidden; background: #111; }
+.item { display: block; overflow: hidden; background: #111 var(--spinner) center / 22px no-repeat; }
 .item img { width: 100%; height: 100%; object-fit: cover; }
 
 html[data-mode="full"] .item {
@@ -103,7 +105,21 @@ html[data-mode="grid"] .feed {
    --------------------------------------------------------------- */
 .page main { padding-bottom: 6rem; }
 
-.post-cover img { width: 100%; height: auto; max-height: 100svh; object-fit: cover; }
+/* Without a banner the title starts below the back arrow. */
+.page:not(.has-banner) #post { padding-top: 3.5rem; }
+
+.post-banner img { width: 100%; height: auto; max-height: 100svh; object-fit: cover; }
+
+/* Loading indicator: a spinner behind each image until it has arrived. */
+.post-banner img:not(.loaded),
+.media img:not(.loaded) { background: var(--spinner) center / 22px no-repeat; }
+
+/* Per-post fonts (chosen in the editor). */
+.font-oswald { --font: "Oswald", "Helvetica Neue", Arial, sans-serif; font-weight: 300; letter-spacing: 0.01em; font-size: 18px; }
+.font-oswald h1, .font-oswald h2, .font-oswald h3, .font-oswald strong { font-weight: 500; letter-spacing: 0; }
+.font-typewriter { --font: "Courier Prime", "Courier New", Courier, monospace; font-size: 16px; }
+.font-typewriter h1, .font-typewriter h2, .font-typewriter h3 { font-weight: 700; letter-spacing: -0.01em; }
+.font-oswald time, .font-typewriter time { font-size: 0.85em; }
 
 .post-head,
 .post-body > *,
@@ -146,12 +162,12 @@ time { color: var(--muted); font-size: 0.85rem; }
 
 /* Big screens: media keep a sensible size instead of filling the width. */
 @media (min-width: 768px) {
-  .post-cover {
+  .post-banner {
     max-width: var(--media-width);
     margin: 4.5rem auto 0;
     padding-inline: 1.25rem;
   }
-  .post-cover img,
+  .post-banner img,
   .media img,
   .media video {
     width: auto;
@@ -159,6 +175,12 @@ time { color: var(--muted); font-size: 0.85rem; }
     max-height: var(--media-height);
     margin-inline: auto;
     object-fit: contain;
+  }
+  /* Known proportions: the box has its final size before the image arrives. */
+  .post-banner img[style*="--ratio"],
+  .media img[style*="--ratio"] {
+    width: min(100%, calc(var(--media-height) * var(--ratio)));
+    height: auto;
   }
   .post-body > .media { padding-inline: 1.25rem; }
   .media .audio { padding-inline: 0; }
@@ -172,7 +194,7 @@ time { color: var(--muted); font-size: 0.85rem; }
   inset: 0;
   height: 100vh;
   z-index: -1;
-  background: #000;
+  background: #000 var(--spinner) center / 22px no-repeat;
 }
 .post-bg img {
   width: 100%;
@@ -200,7 +222,6 @@ time { color: var(--muted); font-size: 0.85rem; }
 .has-bg.reading main { animation: rise 0.6s ease both; }
 @keyframes rise { from { opacity: 0; transform: translateY(1.5rem); } }
 
-.has-bg main { padding-top: 3.5rem; }
 .has-bg time,
 .has-bg .reaction,
 .has-bg .reaction .count,
@@ -298,11 +319,20 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; 
 .hint { margin: 0.4rem 0 0; font-size: 0.8rem; color: var(--muted); }
 #media-list { margin-top: 0.6rem; font-size: 0.85rem; }
 #media-list li { display: flex; align-items: center; gap: 0.5rem; margin: 0; }
-#media-list .size { color: var(--muted); }
+#media-list .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#media-list .size { flex: none; margin-right: auto; color: var(--muted); font-size: 0.75rem; }
+#media-list .flag {
+  flex: none;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.72rem;
+  color: var(--muted);
+  box-shadow: inset 0 0 0 1px #d4d4d4;
+}
+#media-list .flag[aria-pressed="true"] { background: var(--ink); color: var(--paper); box-shadow: none; }
 #media-list .remove {
   width: 36px;
   height: 32px;
-  margin-left: auto;
+  flex: none;
   font-size: 1.15rem;
   line-height: 1;
   color: var(--muted);

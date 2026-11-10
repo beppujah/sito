@@ -58,9 +58,13 @@ https://www.youtube.com/watch?v=XXXXXXXXXXX
 - `## Heading`, `**bold**`, `[text](https://...)`, `- list item`.
 - `draft: true` in the header hides a post: it stays in the repository but is not published.
 - `pinned: true` keeps a post first on the home page, above newer ones.
-- `background: true` opens the post on its cover, full screen; a tap (or scrolling
-  down) shows the text over a faded, blurred copy of the cover. The fade is
-  `--bg-filter` in `src/style.css`.
+- `background: photo.jpg` opens the post on that image, full screen; a tap (or
+  scrolling down) shows the text over a faded, blurred copy of it. The fade is
+  `--bg-filter` in `src/style.css`. `background: true` uses the cover.
+- `banner: photo.jpg` shows that image above the title. The cover itself is only
+  used on the home page.
+- `font: oswald` or `font: typewriter` (Courier Prime) changes the post's font;
+  the default is Helvetica.
 - The folder name is the address of the post. Do not rename it once shared.
 - Posts are ordered by date, newest first.
 
@@ -80,7 +84,9 @@ to 2400 px before upload.
   from the Post list, untick the box and publish when it is ready. The same
   box takes a published post offline again.
 - **Pinned to the top** keeps the post first on the home page.
-- **Cover as background** (on by default for new posts) sets `background: true`.
+- **bg** and **banner** next to an image in the media list pick the background
+  and the banner (one each, or none). **Font** picks the post's font.
+- **About page** in the Post list edits the about text and the contact links.
 - The **x** next to a media file takes it out of the post and out of the text;
   files already published are deleted when you press Publish.
 - **Delete post** (two taps) removes the post folder. Earlier versions remain
