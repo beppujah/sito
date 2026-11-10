@@ -83,7 +83,7 @@ html[data-mode="grid"] .icon-grid { display: none; }
 .feed::-webkit-scrollbar { display: none; }
 
 .item { display: block; overflow: hidden; background: #111; }
-.item img { width: 100%; height: 100%; object-fit: cover; }
+.item img { width: 100%; height: 100%; object-fit: cover; object-position: center;}
 
 @media (min-width: 768px) {
   .item img {
