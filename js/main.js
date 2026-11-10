@@ -18,8 +18,17 @@
   spec.textContent = "seed " + String(cfg.tree.seed).padStart(2, "0") + " · " + cfg.nodes.length + " buds";
 
   var scene = null;
-  try { scene = window.TreeScene(canvas, cfg); } catch (e) { scene = null; }
-  if (!scene) { root.classList.add("no-webgl"); return; }
+  var failure = "";
+  try { scene = window.TreeScene(canvas, cfg); } catch (e) { scene = null; failure = e && e.message ? e.message : String(e); }
+  if (!scene) {
+    // The page still works as a plain page; say why the tree is missing.
+    root.classList.add("no-webgl");
+    var note = document.getElementById("tree-error");
+    note.textContent = (window.THREE ? "3D tree unavailable: WebGL could not start in this browser. " : "3D tree unavailable: three.js did not load. ") + failure;
+    note.hidden = false;
+    if (window.console) console.error("Tree scene failed:", failure);
+    return;
+  }
 
   var reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   stage.style.setProperty("--screens", reduced ? 1 : cfg.scroll.screens);

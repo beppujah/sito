@@ -180,3 +180,6 @@ footer .wrap { display: block; padding-block: 2rem; }
 .project .body { display: grid; gap: 1.5rem; max-width: 44rem; }
 .project .body p { margin: 0; }
 .project .body img { display: block; max-width: 100%; height: auto; }
+
+#tree-error { position: absolute; left: max(20px, env(safe-area-inset-left, 0px)); right: max(20px, env(safe-area-inset-right, 0px)); bottom: 1rem; margin: 0; text-transform: none; letter-spacing: 0; }
+.no-webgl #view { position: relative; }

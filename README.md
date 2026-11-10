@@ -12,6 +12,7 @@ tree that grows as you scroll. Built with three.js, no build step.
 | `index.html` | Page content: hero text and the sections the tree links to | Yes, for content |
 | `projects/*.html` | One page per project, each with its own shareable link | Yes, for content |
 | `js/video.js` | Click-to-play YouTube embeds | Rarely |
+| `js/vendor/three.min.js` | three.js r128, bundled so the site has no external script dependency | No |
 | `js/tree.js` | Procedural tree generator | Only to change how the tree is drawn |
 | `js/scene.js` | three.js scene, camera and rendering | Rarely |
 | `js/main.js` | Scroll progress, tree labels, hero fade | Rarely |
