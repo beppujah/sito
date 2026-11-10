@@ -32,12 +32,22 @@ AUDIO_EXT = {".mp3", ".wav", ".ogg", ".oga", ".m4a", ".aac", ".flac", ".opus"}
 # Reaction kinds, in display order. Keep in sync with reactions.sql.
 TRUE = ("true", "yes", "1")
 
-# Fonts a post can use: name -> Google Fonts stylesheet (None: system font).
-FONTS = {
-    "helvetica": None,
-    "oswald": "https://fonts.googleapis.com/css2?family=Oswald:wght@300;500&display=swap",
-    "typewriter": "https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&display=swap",
-}
+# Fonts a post can use. Oswald and Courier Prime are served from assets/fonts/.
+FONTS = ("helvetica", "oswald", "typewriter")
+
+# How a background image sits behind the text once the text is shown.
+BG_STYLES = ("faded", "bw", "difference")
+
+HEX_COLOR = re.compile(r"^#(?:[0-9a-fA-F]{3}){1,2}$")
+
+
+def is_dark(color):
+    """True for a dark hex colour (so white text reads better on it)."""
+    value = color.lstrip("#")
+    if len(value) == 3:
+        value = "".join(c * 2 for c in value)
+    r, g, b = (int(value[i:i + 2], 16) / 255 for i in (0, 2, 4))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b < 0.5
 
 REACTIONS = ["sun", "moon", "rain", "cloud", "leaf", "water", "wind"]
 
@@ -373,16 +383,25 @@ def load_posts():
             warn(f"{folder.name}: cover image missing, skipped")
             continue
         # background / banner: a file of the post folder, or "true" for the cover.
+        # background can also be a solid colour such as #1d2a33.
         def pick(key):
             value = meta.get(key, "")
             if not value or value.lower() in ("false", "no", "0", "none"):
                 return ""
+            if key == "background" and HEX_COLOR.match(value):
+                return value
             name = cover if value.lower() in TRUE else value
             if not (folder / name).exists():
                 warn(f"{folder.name}: {key} image {name} not found, ignored")
                 return ""
             return name
         background, banner = pick("background"), pick("banner")
+        bg_style = meta.get("background-style", "").lower()
+        if bg_style not in BG_STYLES:
+            bg_style = "faded"
+        text_color = meta.get("text-color", "")
+        if not HEX_COLOR.match(text_color):
+            text_color = ""
         font = meta.get("font", "").lower()
         if font not in FONTS:
             font = "helvetica"
@@ -404,6 +423,8 @@ def load_posts():
                 "pinned": pinned,
                 "background": background,
                 "banner": banner,
+                "bg_style": bg_style,
+                "text_color": text_color,
                 "font": font,
             }
         )
@@ -416,7 +437,8 @@ def load_posts():
 # Templates
 # --------------------------------------------------------------------------
 
-def page(site, *, title, description, root, body, body_class, version, path="", image="", head="", foot=""):
+def page(site, *, title, description, root, body, body_class, version, path="", image="", head="", foot="",
+         body_style=""):
     full_title = site["title"] if not title else f"{title} — {site['title']}"
     meta = [f'<meta property="og:title" content="{esc(title or site["title"])}">']
     if description:
@@ -437,7 +459,7 @@ def page(site, *, title, description, root, body, body_class, version, path="", 
 {chr(10).join(meta)}
 <link rel="stylesheet" href="{root}assets/style.css?v={version}">
 {head}</head>
-<body class="{body_class}">
+<body class="{body_class}"{f' style="{body_style}"' if body_style else ""}>
 {body}
 {foot}<script src="{root}assets/app.js?v={version}"></script>
 </body>
@@ -492,17 +514,26 @@ def post_page(site, post, version):
     cover = quote(post["cover"])
     folder = post["folder"]
     body_class = f"page font-{post['font']}"
+    style = []
     head = ""
-    if FONTS[post["font"]]:
-        head += ('<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>\n'
-                 f'<link rel="stylesheet" href="{FONTS[post["font"]]}">\n')
+    if post["font"] != "helvetica":
+        head += f'<link rel="stylesheet" href="../../assets/fonts/fonts.css?v={version}">\n'
     intro = ""
-    if post["background"]:
-        # The background image fills the screen; a tap shows the text over a faded copy of it.
-        intro = (f'<div class="post-bg" aria-hidden="true">{img_tag(post["background"], "", folder, lazy=False)}</div>\n'
+    background = post["background"]
+    text_color = post["text_color"]
+    if background and HEX_COLOR.match(background):
+        # Solid colour: the text shows straight away.
+        body_class += " bg-color"
+        style.append(f"--page-bg:{background}")
+        text_color = text_color or ("#ffffff" if is_dark(background) else "#111111")
+    elif background:
+        # The image fills the screen; a tap shows the text over it, in the chosen style.
+        intro = (f'<div class="post-bg" aria-hidden="true">{img_tag(background, "", folder, lazy=False)}</div>\n'
                  '<button class="reveal" type="button" aria-controls="post" aria-label="Show the text"></button>\n')
-        body_class += " has-bg"
+        body_class += f" has-bg bg-{post['bg_style']}"
         head += "<script>document.documentElement.classList.add('js')</script>\n"
+    if text_color:
+        style.append(f"--post-ink:{text_color}")
     banner_block = ""
     if post["banner"]:
         banner_block = f'<div class="post-banner">{img_tag(post["banner"], "", folder, lazy=False)}</div>\n'
@@ -527,7 +558,7 @@ def post_page(site, post, version):
     slug = quote(post["slug"])
     return page(site, title=post["title"], description=post["description"], root="../../", body=body,
                 body_class=body_class, version=version, path=f"posts/{slug}/",
-                image=f"posts/{slug}/{cover}", head=head, foot=foot)
+                image=f"posts/{slug}/{cover}", head=head, foot=foot, body_style=";".join(style))
 
 
 def about_page(site, version):
@@ -594,12 +625,29 @@ def admin_page(site, version):
 <div class="post-only">
 <label>Add images, video or audio at the cursor<input id="media" type="file" multiple accept="image/*,video/*,audio/*"></label>
 <ul class="links" id="media-list"></ul>
-<p class="hint">bg: the post opens on this image, full screen; a tap shows the text over a faded copy of it. banner: shown above the title. One of each per post, or none. Flagged images are taken out of the text.</p>
+<p class="hint">bg: the image used by the Background option below (without one, the cover). banner: shown above the title. Flagged images are taken out of the text.</p>
 <label>Font<select id="font">
 <option value="helvetica">Helvetica</option>
 <option value="oswald">Oswald</option>
 <option value="typewriter">Typewriter (Courier Prime)</option>
 </select></label>
+<label>Background<select id="bg-style">
+<option value="">None (white page)</option>
+<option value="faded">Image, faded and blurred</option>
+<option value="bw">Image, black and white, darkened</option>
+<option value="difference">Image as it is, text in difference</option>
+<option value="color">Solid colour</option>
+</select></label>
+<p class="hint" id="bg-note"></p>
+<label id="bg-color-row" hidden>Background colour<input id="bg-color" type="color" value="#1d2a33"></label>
+<label>Text colour<select id="text-color-mode">
+<option value="">Automatic</option>
+<option value="#111111">Black</option>
+<option value="#ffffff">White</option>
+<option value="#8c8c8c">Grey</option>
+<option value="custom">Custom</option>
+</select></label>
+<label id="text-color-row" hidden>Custom text colour<input id="text-color" type="color" value="#111111"></label>
 <label class="check"><input id="hidden" type="checkbox">Hidden (draft): saved, but not shown on the site</label>
 <label class="check"><input id="pinned" type="checkbox">Pinned to the top</label>
 </div>
@@ -630,7 +678,7 @@ def build():
     everything = load_posts()
     posts = [post for post in everything if not post["hidden"]]  # hidden posts are not published
     digest = hashlib.sha1()
-    for name in ("style.css", "app.js", "admin.js"):
+    for name in ("style.css", "app.js", "admin.js", "fonts/fonts.css"):
         digest.update((SRC / name).read_bytes())
     version = digest.hexdigest()[:8]
 
@@ -640,6 +688,7 @@ def build():
     (OUT / ".nojekyll").write_text("")
     shutil.copy2(SRC / "style.css", OUT / "assets" / "style.css")
     shutil.copy2(SRC / "app.js", OUT / "assets" / "app.js")
+    shutil.copytree(SRC / "fonts", OUT / "assets" / "fonts")
 
     static = CONTENT / "static"  # optional: favicon, CNAME, robots.txt ...
     if static.exists():

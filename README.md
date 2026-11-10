@@ -59,12 +59,19 @@ https://www.youtube.com/watch?v=XXXXXXXXXXX
 - `draft: true` in the header hides a post: it stays in the repository but is not published.
 - `pinned: true` keeps a post first on the home page, above newer ones.
 - `background: photo.jpg` opens the post on that image, full screen; a tap (or
-  scrolling down) shows the text over a faded, blurred copy of it. The fade is
-  `--bg-filter` in `src/style.css`. `background: true` uses the cover.
+  scrolling down) shows the text over it. `background-style` sets how:
+  `faded` (default: no colour, low contrast, blurred, dark text), `bw` (black
+  and white, darkened, light text) or `difference` (image as it is, text in
+  difference like the corner icons). The filters are `--bg-faded` and `--bg-bw`
+  in `src/style.css`. `background: true` uses the cover.
+- `background: #1d2a33` gives the post a solid colour instead.
+- `text-color: #8a3b12` sets the text colour; without it each background picks
+  black or white.
 - `banner: photo.jpg` shows that image above the title. The cover itself is only
   used on the home page.
 - `font: oswald` or `font: typewriter` (Courier Prime) changes the post's font;
-  the default is Helvetica.
+  the default is Helvetica. Both are served from the site (`src/fonts/`, SIL Open
+  Font License), not from Google.
 - The folder name is the address of the post. Do not rename it once shared.
 - Posts are ordered by date, newest first.
 

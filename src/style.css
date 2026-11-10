@@ -15,8 +15,10 @@
   /* Small spinner shown where an image is still loading. */
   --spinner: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='9' fill='none' stroke='%238c8c8c' stroke-width='1.2' stroke-linecap='round' stroke-dasharray='14 43'%3E%3CanimateTransform attributeName='transform' type='rotate' from='0 12 12' to='360 12 12' dur='0.9s' repeatCount='indefinite'/%3E%3C/circle%3E%3C/svg%3E");
   /* Cover used as a post background, behind the text: almost no colour, low contrast, light. */
-  --bg-filter: grayscale(0.92) contrast(0.26) brightness(1.7) blur(2px);
-  --bg-ink-soft: #3d3d3d;  /* secondary text (date, reaction icons) over that background */
+  /* Background image behind the text. faded: almost no colour, low contrast, light, a little blur
+     (dark text). bw: black and white, darkened (light text). */
+  --bg-faded: grayscale(0.92) contrast(0.26) brightness(1.7) blur(2px);
+  --bg-bw: grayscale(1) contrast(0.9) brightness(0.42);
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -187,27 +189,40 @@ time { color: var(--muted); font-size: 0.85rem; }
 }
 
 /* ---------------------------------------------------------------
-   Post with the cover as background
+   Post backgrounds (chosen in the editor)
+   - image: the post opens on the image; a tap shows the text over it in
+     one of three styles: faded, bw (black and white) or difference.
+   - colour: a solid page colour, text shown straight away.
+   The text colour is --post-ink when set, otherwise a default per style.
    --------------------------------------------------------------- */
+.page #post { color: var(--post-ink, var(--auto-ink, var(--ink))); }
+
 .post-bg {
   position: fixed;
   inset: 0;
   height: 100vh;
   z-index: -1;
+  overflow: hidden;
   background: #000 var(--spinner) center / 22px no-repeat;
 }
-.post-bg img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: filter 0.7s ease, transform 0.7s ease;
-}
+.post-bg img { width: 100%; height: 100%; object-fit: cover; }
 .has-bg { background: transparent; }
-.has-bg.reading .post-bg img, html:not(.js) .has-bg .post-bg img {
-  filter: var(--bg-filter);
+
+.bg-faded { --auto-ink: #111; }
+.bg-faded.reading .post-bg img, html:not(.js) .bg-faded .post-bg img {
+  filter: var(--bg-faded);
   transform: scale(1.04); /* hides the soft edge left by the blur */
 }
-.post-bg { overflow: hidden; }
+
+.bg-bw { --auto-ink: #fff; }
+.bg-bw.reading .post-bg img, html:not(.js) .bg-bw .post-bg img { filter: var(--bg-bw); }
+
+.bg-difference { --auto-ink: #fff; }
+.bg-difference .post-head,
+.bg-difference .post-body > :not(.media),
+.bg-difference .reactions-box { mix-blend-mode: difference; }
+
+.bg-color { background: var(--page-bg); }
 
 .reveal { display: none; }
 .js .has-bg:not(.reading) .reveal {
@@ -219,15 +234,19 @@ time { color: var(--muted); font-size: 0.85rem; }
   cursor: pointer;
 }
 .js .has-bg:not(.reading) main { display: none; }
-.has-bg.reading main { animation: rise 0.6s ease both; }
-@keyframes rise { from { opacity: 0; transform: translateY(1.5rem); } }
 
-.has-bg time,
-.has-bg .reaction,
-.has-bg .reaction .count,
-.has-bg .reactions-info,
-.has-bg .reactions-note { color: var(--bg-ink-soft); }
-.has-bg .reaction[aria-pressed="true"] { color: var(--ink); }
+/* Secondary text follows the text colour, a little lighter. */
+.has-bg time, .bg-color time,
+.has-bg .reaction, .bg-color .reaction,
+.has-bg .reaction .count, .bg-color .reaction .count,
+.has-bg .reactions-info, .bg-color .reactions-info,
+.has-bg .reactions-note, .bg-color .reactions-note { color: color-mix(in srgb, currentColor 70%, transparent); }
+.has-bg .reaction, .bg-color .reaction,
+.has-bg .reactions-info, .bg-color .reactions-info { color: color-mix(in srgb, var(--post-ink, var(--auto-ink, var(--ink))) 65%, transparent); }
+.has-bg .reaction[aria-pressed="true"], .bg-color .reaction[aria-pressed="true"] { color: var(--post-ink, var(--auto-ink, var(--ink))); }
+@media (hover: hover) {
+  .has-bg .reaction:hover, .bg-color .reaction:hover { color: var(--post-ink, var(--auto-ink, var(--ink))); }
+}
 
 code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; }
 

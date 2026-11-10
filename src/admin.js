@@ -180,9 +180,14 @@
             } else {
               state.flags[flag[0]] = entry.key;
               if (!entry.cover) unlink(entry.name);
+              if (flag[0] === 'background' && !/^(faded|bw|difference)$/.test($('bg-style').value)) {
+                $('bg-style').value = 'faded';
+                showBackground();
+              }
               status(entry.name + ' is the ' + flag[0] + (entry.cover ? '.' : ', and was taken out of the text.'));
             }
             renderMedia();
+            showBackground();
           });
           row.appendChild(button);
         });
@@ -212,6 +217,27 @@
     Array.prototype.forEach.call(document.querySelectorAll('.about-only'), function (el) { el.hidden = !on; });
     if (on) $('delete').hidden = true;
   };
+
+  // Background and text colour controls.
+  var showBackground = function () {
+    var style = $('bg-style').value;
+    var image = /^(faded|bw|difference)$/.test(style);
+    $('bg-color-row').hidden = style !== 'color';
+    var key = state.flags.background;
+    $('bg-note').textContent = image
+      ? 'Image: ' + (key && key !== '@cover' ? key : (coverName() || 'the cover') + ' (the cover)') +
+        '. The post opens on it; a tap shows the text.'
+      : '';
+  };
+  $('bg-style').addEventListener('change', function () {
+    if (!/^(faded|bw|difference)$/.test($('bg-style').value)) state.flags.background = null;
+    renderMedia();
+    showBackground();
+  });
+  var showTextColor = function () {
+    $('text-color-row').hidden = $('text-color-mode').value !== 'custom';
+  };
+  $('text-color-mode').addEventListener('change', showTextColor);
 
   var decode = function (file) {
     var bytes = Uint8Array.from(atob(file.content.replace(/\s/g, '')), function (c) { return c.charCodeAt(0); });
@@ -254,6 +280,10 @@
     state.slugTouched = false;
     showAbout(false);
     $('font').value = 'helvetica';
+    $('bg-style').value = '';
+    $('text-color-mode').value = '';
+    showBackground();
+    showTextColor();
     $('contacts').value = '';
     ['title', 'slug', 'text', 'cover', 'media'].forEach(function (id) { $(id).value = ''; });
     $('hidden').checked = false;
@@ -287,6 +317,7 @@
       state.cover = item;
       $('cover-note').textContent = 'New cover: ' + Math.round(item.blob.size / 1024) + ' KB';
       renderMedia();
+      showBackground();
     });
   });
 
@@ -366,6 +397,23 @@
         state.flags[flag[0]] = !value || /^(false|no|0|none)$/i.test(value) ? null
           : isTrue(value) || value === cover ? '@cover' : value;
       });
+      var bg = state.flags.background;
+      if (bg && /^#[0-9a-f]{3,6}$/i.test(bg)) {
+        $('bg-style').value = 'color';
+        $('bg-color').value = bg.length === 4 ? '#' + bg[1] + bg[1] + bg[2] + bg[2] + bg[3] + bg[3] : bg;
+        state.flags.background = null;
+      } else if (bg) {
+        var style = (parsed.meta['background-style'] || '').toLowerCase();
+        $('bg-style').value = /^(bw|difference)$/.test(style) ? style : 'faded';
+      }
+      var ink = (parsed.meta['text-color'] || '').toLowerCase();
+      if (/^#[0-9a-f]{6}$/.test(ink)) {
+        var preset = ['#111111', '#ffffff', '#8c8c8c'].indexOf(ink) >= 0;
+        $('text-color-mode').value = preset ? ink : 'custom';
+        $('text-color').value = ink;
+      }
+      showBackground();
+      showTextColor();
       $('font').value = /^(oswald|typewriter)$/.test(parsed.meta.font || '') ? parsed.meta.font : 'helvetica';
       $('delete').hidden = false;
       labelPublish();
@@ -478,14 +526,22 @@
     var front = ['title: ' + title, 'date: ' + date, 'cover: ' + coverName];
     if (hidden) front.push('draft: true');
     if (pinned) front.push('pinned: true');
-    FLAGS.forEach(function (flag) {
-      var key = state.flags[flag[0]];
-      if (key) front.push(flag[0] + ': ' + (key === '@cover' ? coverName : key));
-    });
+    var bgStyle = $('bg-style').value;
+    if (bgStyle === 'color') {
+      front.push('background: ' + $('bg-color').value);
+    } else if (bgStyle) {
+      var bgKey = state.flags.background || '@cover';
+      front.push('background: ' + (bgKey === '@cover' ? coverName : bgKey));
+      front.push('background-style: ' + bgStyle);
+    }
+    if (state.flags.banner) front.push('banner: ' + (state.flags.banner === '@cover' ? coverName : state.flags.banner));
+    var ink = $('text-color-mode').value === 'custom' ? $('text-color').value : $('text-color-mode').value;
+    if (ink) front.push('text-color: ' + ink);
     if ($('font').value !== 'helvetica') front.push('font: ' + $('font').value);
     if (state.editing) {
       Object.keys(state.editing.meta).forEach(function (key) { // keep any other field
-        if (['title', 'date', 'cover', 'draft', 'pinned', 'background', 'banner', 'font'].indexOf(key) < 0) {
+        if (['title', 'date', 'cover', 'draft', 'pinned', 'background', 'background-style', 'banner',
+             'text-color', 'font'].indexOf(key) < 0) {
           front.push(key + ': ' + state.editing.meta[key]);
         }
       });
