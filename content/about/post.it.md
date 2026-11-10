@@ -1,5 +1,5 @@
 ---
-title: Ciao Mondo
+title: Hello World!
 ---
 
 Sono Giuseppe Zamboni, appassionato di fai da te, pensatore artistico e riciclatore tecnologico dall'Italia, con sede in Cechia.
