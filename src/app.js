@@ -63,19 +63,25 @@
       requestAnimationFrame(frame);
     };
 
-    // A click while a photo is sliding: the press and the release land on
-    // different photos, so the browser would not open either. Open the one
-    // that was pressed.
+    // A click or tap while the photos are moving (our slide, or the phone's
+    // own scrolling and snapping): the browser would not open anything, as
+    // the press and release land on different photos, or the phone uses the
+    // first tap just to stop the scroll. Open the photo that was pressed.
+    var lastScroll = 0;
+    window.addEventListener('scroll', function () { lastScroll = Date.now(); }, { passive: true });
     var pressed = null;
     feed.addEventListener('pointerdown', function (event) {
       var item = event.target.closest('.item');
-      pressed = animating && item && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey
-        ? { href: item.href, x: event.clientX, y: event.clientY } : null;
+      var moving = animating || Date.now() - lastScroll < 150;
+      pressed = moving && item && event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey
+        ? { href: item.href, x: event.clientX, y: event.clientY, at: Date.now() } : null;
     });
+    window.addEventListener('pointercancel', function () { pressed = null; });
     window.addEventListener('pointerup', function (event) {
       var press = pressed;
       pressed = null;
-      if (press && Math.abs(event.clientX - press.x) < 12 && Math.abs(event.clientY - press.y) < 12) {
+      if (press && Date.now() - press.at < 600 &&
+          Math.abs(event.clientX - press.x) < 12 && Math.abs(event.clientY - press.y) < 12) {
         location.href = press.href;
       }
     });
