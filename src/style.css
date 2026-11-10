@@ -13,9 +13,16 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 
-html { -webkit-text-size-adjust: 100%; }
+html { 
+   overflow: hidden;
+   width: 100%;
+   height: 100%;
+   -webkit-text-size-adjust: 100%; }
 
 body {
+  height: 100%;
+  position: fixed;
+  overflow-y: scroll;
   margin: 0;
   background: var(--paper);
   color: var(--ink);
@@ -77,6 +84,13 @@ html[data-mode="grid"] .icon-grid { display: none; }
 
 .item { display: block; overflow: hidden; background: #111; }
 .item img { width: 100%; height: 100%; object-fit: cover; }
+
+@media (min-width: 768px) {
+  .item img {
+    width: auto;
+    height: 100%;
+  }
+}
 
 html[data-mode="full"] .feed { scroll-snap-type: y mandatory; }
 html[data-mode="full"] .item {
