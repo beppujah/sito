@@ -89,6 +89,7 @@ html[data-mode="grid"] .icon-grid { display: none; }
   .item img {
     width: auto;
     height: 100%;
+    margin-inline: auto;
   }
 }
 
