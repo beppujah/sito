@@ -82,7 +82,8 @@ ICONS = {
         '<circle cx="12" cy="12" r="9.25"/><path d="M12 10.75v6"/>'
         '<circle cx="12" cy="7.75" r="0.55" fill="currentColor" stroke="none"/>'
     ),
-    "back": svg('<path d="M19.5 12H4.5"/><path d="M10 6.5L4.5 12l5.5 5.5"/>'),
+    # Back to the posts: a small stack of photos.
+    "back": svg('<rect x="5.5" y="9" width="13" height="11"/><path d="M7.5 6h9"/><path d="M9.5 3.5h5"/>'),
     "grid": svg(
         '<rect x="4.5" y="4.5" width="6" height="6"/><rect x="13.5" y="4.5" width="6" height="6"/>'
         '<rect x="4.5" y="13.5" width="6" height="6"/><rect x="13.5" y="13.5" width="6" height="6"/>',
@@ -695,16 +696,13 @@ def reactions_html(slug):
         '<span class="count"></span></button>'
         for kind in REACTIONS
     )
-    note = (
-        "Non-binary reactions: no likes, no dislikes. Pick the weather this post leaves you in. "
-        "One per visitor, anonymous. Tap it again to take it back."
-    )
+    note = "Non-binary reactions.<br>Leave one, if you wish.<br>Anonymously."
     return (
         f'<section class="reactions-box"><div class="reactions" data-post="{esc(slug)}" role="group" '
         f'aria-label="Reactions" aria-describedby="reactions-note">{buttons}'
         '<button class="reactions-info" type="button" aria-expanded="false" aria-controls="reactions-note" '
         'aria-label="About these reactions">*</button></div>'
-        f'<p class="reactions-note" id="reactions-note">{esc(note)}</p></section>'
+        f'<p class="reactions-note" id="reactions-note">{note}</p></section>'
     )
 
 
@@ -735,7 +733,7 @@ def post_page(site, post, version):
     if post["banner"]:
         banner_block = f'<div class="post-banner">{img_tag(post["banner"], "", folder, lazy=False)}</div>\n'
         body_class += " has-banner"
-    body = f"""<a class="corner corner-left" href="../../" data-back aria-label="Back">{ICONS["back"]}</a>
+    body = f"""<a class="corner corner-left" href="../../" data-back aria-label="Back to the posts">{ICONS["back"]}</a>
 {intro}<main id="post">
 <article class="post">
 {banner_block}<header class="post-head">
@@ -764,7 +762,7 @@ def about_page(site, version):
         for link in site.get("contact", [])
     )
     contact = f'<h2 id="contact">Contact</h2>\n<ul class="links">{links}</ul>' if links else ""
-    body = f"""<a class="corner corner-left" href="../" data-back aria-label="Back">{ICONS["back"]}</a>
+    body = f"""<a class="corner corner-left" href="../" data-back aria-label="Back to the posts">{ICONS["back"]}</a>
 <main class="prose">
 <h1>About</h1>
 {text}

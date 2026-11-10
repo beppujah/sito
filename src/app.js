@@ -29,10 +29,13 @@
     var items = Array.prototype.slice.call(feed.querySelectorAll('.item'));
     var STORE = 'feed-index';
 
+    // Position of a photo in the page (exact, not rounded like offsetTop).
+    var topOf = function (item) { return item.getBoundingClientRect().top + window.scrollY; };
+
     var currentIndex = function () {
       var top = window.scrollY;
       for (var i = 0; i < items.length; i++) {
-        if (items[i].offsetTop + items[i].offsetHeight > top + 1) return i;
+        if (topOf(items[i]) + items[i].offsetHeight > top + 1) return i;
       }
       return 0;
     };
@@ -128,7 +131,7 @@
           if (touch || animating || root.dataset.mode !== 'full' || !items.length) return;
           var height = items[0].offsetHeight;
           var nearest = Math.max(0, Math.min(items.length - 1, Math.round(window.scrollY / height)));
-          if (Math.abs(window.scrollY - nearest * height) > 2) slideTo(items[nearest].offsetTop, SNAP_TIME, easeOut);
+          if (Math.abs(window.scrollY - nearest * height) > 2) slideTo(topOf(items[nearest]), SNAP_TIME, easeOut);
         }, 140);
       }, { passive: true });
       window.addEventListener('touchend', function (event) {
@@ -145,15 +148,15 @@
         root.style.overflow = 'hidden';
         requestAnimationFrame(function () {
           root.style.overflow = '';
-          slideTo(items[index].offsetTop, SNAP_TIME, easeOut);
+          slideTo(topOf(items[index]), SNAP_TIME, easeOut);
         });
       }, { passive: true });
     }
 
     var goTo = function (index, smooth) {
       if (!items[index]) return;
-      if (smooth) slideTo(items[index].offsetTop);
-      else window.scrollTo(0, items[index].offsetTop);
+      if (smooth) slideTo(topOf(items[index]));
+      else window.scrollTo(0, topOf(items[index]));
     };
 
     var NEXT = { full: 'grid', grid: 'index', index: 'full' };
@@ -338,11 +341,14 @@
       var post = group.dataset.post;
       var own = counts[post] || {};
       var top = null;
+      var overlay = group.classList.contains('item-reactions');
       Array.prototype.forEach.call(group.querySelectorAll('[data-kind]'), function (button) {
         var kind = button.dataset.kind;
         var n = own[kind] || 0;
         button.setAttribute('aria-pressed', state.picks[post] === kind ? 'true' : 'false');
         button.querySelector('.count').textContent = remote && n > 0 ? n : '';
+        // Over the home photos only the reactions someone chose are shown.
+        if (overlay) button.hidden = remote && n === 0 && state.picks[post] !== kind;
         if (n > 0 && (!top || n > own[top.dataset.kind])) top = button;
       });
       // Grid: only the most chosen reaction, small, over the photo.
