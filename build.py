@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Static site generator for the portfolio. Standard library only.
 
+Optional, for smaller images and web-ready video (installed on GitHub by the
+deploy workflow): pip install pillow imageio-ffmpeg
+
 Usage:
   python3 build.py                      build the site into _site/
   python3 build.py serve [port]         build and preview at http://localhost:8000
@@ -14,7 +17,10 @@ import json
 import re
 import shutil
 import struct
+import subprocess
 import sys
+import urllib.request
+from email.utils import format_datetime
 import unicodedata
 from pathlib import Path
 from urllib.parse import quote
@@ -24,6 +30,12 @@ CONTENT = ROOT / "content"
 POSTS = CONTENT / "posts"
 SRC = ROOT / "src"
 OUT = ROOT / "_site"
+CACHE = ROOT / ".cache"  # resized images, converted videos, favicon (rebuilt when missing)
+
+try:
+    from PIL import Image, ImageDraw, ImageOps
+except ImportError:  # the site still builds, with the original files only
+    Image = None
 
 IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg", ".avif"}
 VIDEO_EXT = {".mp4", ".webm", ".mov", ".m4v", ".ogv"}
@@ -76,6 +88,8 @@ ICONS = {
         '<rect x="4.5" y="13.5" width="6" height="6"/><rect x="13.5" y="13.5" width="6" height="6"/>',
         cls="icon-grid",
     ),
+    # Index: a list of lines.
+    "list": svg('<path d="M4.5 7h15M4.5 12h15M4.5 17h15"/>', cls="icon-list"),
     # Full screen: two diagonal arrows.
     "expand": svg(
         '<path d="M14.5 4.5h5v5"/><path d="M19.5 4.5l-6 6"/>'
@@ -214,15 +228,148 @@ def image_size(path):
     return None
 
 
-def img_tag(src, alt="", folder=None, lazy=True, cls=""):
-    """<img> with width/height (and a --ratio for CSS) when the file can be read."""
+# --------------------------------------------------------------------------
+# Media processing: smaller WebP copies of photos, MP4 + poster for videos
+# --------------------------------------------------------------------------
+
+WIDTHS = (600, 1200, 2000)               # widths of the WebP copies
+RASTER = {".jpg", ".jpeg", ".png", ".webp", ".avif"}
+CONVERT_VIDEO = {".mov", ".m4v"}         # turned into .mp4 for every browser
+VARIANTS = {}  # source path -> [(width, file name)]
+VIDEOS = {}    # source path -> {"file", "poster", "size"}
+_warned = set()
+
+
+def warn_once(key, message):
+    if key not in _warned:
+        _warned.add(key)
+        warn(message)
+
+
+def file_hash(path):
+    return hashlib.sha1(path.read_bytes()).hexdigest()[:16]
+
+
+def make_variants(source, target):
+    """WebP copies of a photo at a few widths, cached in .cache/media."""
+    if Image is None:
+        warn_once("pillow", "Pillow is not installed: images are published at full size only")
+        return []
+    stem = source.stem
+    cache = CACHE / "media" / file_hash(source)
+    done = []
+    try:
+        if not (cache / "done").exists():
+            cache.mkdir(parents=True, exist_ok=True)
+            with Image.open(source) as image:
+                image = ImageOps.exif_transpose(image)
+                if image.mode not in ("RGB", "RGBA"):
+                    image = image.convert("RGBA" if "A" in image.getbands() else "RGB")
+                width, height = image.size
+                for w in sorted({min(x, width) for x in WIDTHS}):
+                    copy = image if w == width else image.resize((w, round(height * w / width)), Image.LANCZOS)
+                    copy.save(cache / f"{w}.webp", "WEBP", quality=80, method=4)
+            (cache / "done").write_text("")
+        for file in sorted(cache.glob("*.webp"), key=lambda f: int(f.stem)):
+            name = f"{stem}-{file.stem}.webp"
+            shutil.copy2(file, target / name)
+            done.append((int(file.stem), name))
+    except (OSError, ValueError) as error:
+        warn(f"{source.parent.name}/{source.name}: could not resize ({error})")
+        return []
+    return done
+
+
+def ffmpeg():
+    exe = shutil.which("ffmpeg")
+    if not exe:
+        try:
+            import imageio_ffmpeg
+            exe = imageio_ffmpeg.get_ffmpeg_exe()
+        except Exception:
+            exe = None
+    if not exe:
+        warn_once("ffmpeg", "ffmpeg is not available: videos are published as they are, without a poster")
+    return exe
+
+
+def make_video(source, target):
+    """MP4 (when needed) and a poster frame, cached in .cache/media. Returns VIDEOS entry."""
+    exe = ffmpeg()
+    convert = source.suffix.lower() in CONVERT_VIDEO
+    name = source.stem + ".mp4" if convert else source.name
+    entry = {"file": source.name, "poster": None, "size": None}
+    if not exe:
+        shutil.copy2(source, target / source.name)
+        return entry
+    cache = CACHE / "media" / file_hash(source)
+    cache.mkdir(parents=True, exist_ok=True)
+    run = lambda args: subprocess.run([exe, "-v", "error", "-y", *args], capture_output=True, timeout=900)
+    try:
+        if convert and not (cache / "video.mp4").exists():
+            probe = subprocess.run([exe, "-i", str(source)], capture_output=True, text=True).stderr
+            video = "copy" if re.search(r"Video: h264", probe) else "libx264"
+            audio = "copy" if re.search(r"Audio: aac", probe) else "aac"
+            args = ["-i", str(source), "-map", "0:v:0", "-map", "0:a?", "-c:v", video, "-c:a", audio]
+            if video == "libx264":
+                args += ["-crf", "23", "-preset", "veryfast", "-pix_fmt", "yuv420p"]
+            result = run(args + ["-movflags", "+faststart", str(cache / "tmp.mp4")])
+            if result.returncode:
+                raise OSError(result.stderr.decode(errors="ignore")[-300:])
+            (cache / "tmp.mp4").rename(cache / "video.mp4")
+        if not (cache / "poster.jpg").exists():
+            run(["-ss", "0.3", "-i", str(source), "-frames:v", "1", "-vf", "scale='min(1200,iw)':-2",
+                 "-q:v", "4", str(cache / "poster.jpg")])
+        if convert:
+            shutil.copy2(cache / "video.mp4", target / name)
+        else:
+            shutil.copy2(source, target / name)
+        entry["file"] = name
+        if (cache / "poster.jpg").exists():
+            entry["poster"] = source.stem + "-poster.jpg"
+            shutil.copy2(cache / "poster.jpg", target / entry["poster"])
+            entry["size"] = image_size(cache / "poster.jpg")
+    except (OSError, subprocess.SubprocessError) as error:
+        warn(f"{source.parent.name}/{source.name}: video not converted ({error})")
+        if not (target / source.name).exists():
+            shutil.copy2(source, target / source.name)
+        entry["file"] = source.name
+    return entry
+
+
+def publish_files(folder, target):
+    """Copy a post's files to the site, with resized photos and converted videos."""
+    target.mkdir(parents=True, exist_ok=True)
+    for item in sorted(folder.iterdir()):
+        if not item.is_file() or item.name == "post.md" or item.name.startswith("."):
+            continue
+        ext = item.suffix.lower()
+        if ext in VIDEO_EXT:
+            VIDEOS[item] = make_video(item, target)
+            continue
+        shutil.copy2(item, target / item.name)
+        if ext in RASTER:
+            VARIANTS[item] = make_variants(item, target)
+
+
+SIZES_MEDIA = "(min-width: 768px) 46rem, 100vw"
+
+
+def img_tag(src, alt="", folder=None, lazy=True, cls="", sizes=SIZES_MEDIA, prefix=""):
+    """<img> with width/height (and a --ratio for CSS) and WebP copies when available."""
     attrs = f' class="{cls}"' if cls else ""
-    size = image_size(folder / src) if folder and "/" not in src and ":" not in src else None
+    local = folder / src if folder and "/" not in src and ":" not in src else None
+    size = image_size(local) if local else None
     if size and size[0] and size[1]:
         attrs += f' width="{size[0]}" height="{size[1]}" style="--ratio:{size[0] / size[1]:.4f}"'
+    variants = VARIANTS.get(local) if local else None
+    if variants:
+        srcset = ", ".join(f"{esc(prefix + quote(name))} {width}w" for width, name in variants)
+        attrs += f' srcset="{srcset}" sizes="{sizes}"'
     if lazy:
         attrs += ' loading="lazy"'
-    return f'<img src="{esc(quote(src))}" alt="{esc(alt)}"{attrs}>'
+    attrs += ' decoding="async"'
+    return f'<img src="{esc(prefix + quote(src))}" alt="{esc(alt)}"{attrs}>'
 
 
 # --------------------------------------------------------------------------
@@ -234,7 +381,8 @@ YOUTUBE = re.compile(
     r"^https?://(?:www\.|m\.)?(?:youtube\.com/(?:watch\?(?:\S*?&)?v=|shorts/|embed/)|youtu\.be/)([\w-]{11})\S*$"
 )
 VIMEO = re.compile(r"^https?://(?:www\.)?vimeo\.com/(\d+)\S*$")
-MEDIA_LINE = re.compile(r"^!\[([^\]]*)\]\((\S+?)\)$")
+# ![description](file "caption") loop   (caption and loop are optional)
+MEDIA_LINE = re.compile(r'^!\[([^\]]*)\]\((\S+?)(?:\s+"([^"]*)")?\)(\s+loop)?$')
 
 
 def _autolink(match):
@@ -256,14 +404,23 @@ def inline(text):
     return text
 
 
-def media_html(src, alt="", folder=None):
+def media_html(src, alt="", folder=None, caption="", loop=False):
     ext = Path(src.split("?")[0]).suffix.lower()
-    source = esc(src)
+    label = f' aria-label="{esc(alt)}"' if alt else ""
+    note = f"<figcaption>{inline(caption)}</figcaption>" if caption else ""
     if ext in VIDEO_EXT:
-        return f'<figure><video src="{source}" controls playsinline preload="metadata"></video></figure>'
+        video = VIDEOS.get(folder / src) if folder else None
+        source = esc(quote(video["file"] if video else src))
+        extra = f' poster="{esc(quote(video["poster"]))}"' if video and video["poster"] else ""
+        if video and video["size"]:
+            extra += f' width="{video["size"][0]}" height="{video["size"][1]}" style="--ratio:{video["size"][0] / video["size"][1]:.4f}"'
+        if loop:  # a short clip that plays like a living image
+            return (f'<figure class="loop"><video src="{source}"{extra}{label} autoplay muted loop playsinline '
+                    f'preload="auto"></video>{note}</figure>')
+        return f'<figure><video src="{source}"{extra}{label} controls playsinline preload="metadata"></video>{note}</figure>'
     if ext in AUDIO_EXT:
-        return f'<figure class="audio"><audio src="{source}" controls preload="metadata"></audio></figure>'
-    return f"<figure>{img_tag(src, alt, folder)}</figure>"
+        return f'<figure class="audio"><audio src="{esc(src)}"{label} controls preload="metadata"></audio>{note}</figure>'
+    return f"<figure>{img_tag(src, alt, folder)}{note}</figure>"
 
 
 def embed_html(url):
@@ -293,7 +450,7 @@ def render_markdown(body, folder=None):
         match = MEDIA_LINE.match(text)
         if match:
             flush()
-            out.append(media_html(match.group(2), match.group(1), folder))
+            out.append(media_html(match.group(2), match.group(1), folder, match.group(3) or "", bool(match.group(4))))
             continue
         match = YOUTUBE.match(text)
         if match:
@@ -438,7 +595,7 @@ def load_posts():
 # --------------------------------------------------------------------------
 
 def page(site, *, title, description, root, body, body_class, version, path="", image="", head="", foot="",
-         body_style=""):
+         body_style="", robots=""):
     full_title = site["title"] if not title else f"{title} — {site['title']}"
     meta = [f'<meta property="og:title" content="{esc(title or site["title"])}">']
     if description:
@@ -450,6 +607,12 @@ def page(site, *, title, description, root, body, body_class, version, path="", 
         if image:
             meta.append(f'<meta property="og:image" content="{esc(site["url"] + "/" + image)}">')
             meta.append('<meta name="twitter:card" content="summary_large_image">')
+    if robots:
+        meta.append(f'<meta name="robots" content="{robots}">')
+    if site.get("_favicon"):
+        meta.append(f'<link rel="icon" type="image/png" href="{root}favicon.png">')
+        meta.append(f'<link rel="apple-touch-icon" href="{root}apple-touch-icon.png">')
+    meta.append(f'<link rel="alternate" type="application/rss+xml" title="{esc(site["title"])}" href="{root}feed.xml">')
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -467,23 +630,39 @@ def page(site, *, title, description, root, body, body_class, version, path="", 
 """
 
 
+SIZES_FULL = "(min-width: 768px) 75vh, 100vw"  # home, full screen (app.js switches it for the grid)
+
+
 def home_page(site, posts, version):
     if posts:
-        lazy = ' loading="lazy"'
         items = "\n".join(
-            f'<a class="item" href="posts/{quote(p["slug"])}/" aria-label="{esc(p["title"])}">'
-            f'<img src="posts/{quote(p["slug"])}/{quote(p["cover"])}" alt="{esc(p["title"])}"'
-            f'{lazy if index else ""}></a>'
+            f'<a class="item" href="posts/{quote(p["slug"])}/">'
+            + img_tag(p["cover"], p["title"], p["folder"], lazy=index > 0, sizes=SIZES_FULL,
+                      prefix=f'posts/{quote(p["slug"])}/')
+            + f'<span class="item-title" aria-hidden="true">{esc(p["title"])}</span></a>'
             for index, p in enumerate(posts)
+        )
+        rows = "\n".join(
+            f'<li><a href="posts/{quote(p["slug"])}/"><span>{esc(p["title"])}</span>'
+            f'<time datetime="{p["date"].isoformat()}">{p["date"].strftime("%d.%m.%Y")}</time></a></li>'
+            for p in posts
         )
     else:
         items = '<p class="empty">No posts yet.</p>'
+        rows = ""
     body = f"""<a class="corner corner-left" href="about/" aria-label="About and contact">{ICONS["info"]}</a>
-<button class="corner corner-right" id="mode" type="button" aria-label="Switch view">{ICONS["grid"]}{ICONS["expand"]}</button>
+<button class="corner corner-right" id="mode" type="button" aria-label="Switch view">{ICONS["grid"]}{ICONS["list"]}{ICONS["expand"]}</button>
+<h1 class="visually-hidden">{esc(site["title"])}</h1>
 <main class="feed" id="feed">
 {items}
-</main>"""
-    head = '<script>document.documentElement.dataset.mode=location.hash==="#grid"?"grid":"full"</script>\n'
+</main>
+<nav class="index" id="index" aria-label="All posts">
+<ol>
+{rows}
+</ol>
+</nav>"""
+    head = ('<script>document.documentElement.dataset.mode='
+            '{"#grid":"grid","#index":"index"}[location.hash]||"full"</script>\n')
     image = f'posts/{quote(posts[0]["slug"])}/{quote(posts[0]["cover"])}' if posts else ""
     return page(site, title="", description=site["description"], root="", body=body,
                 body_class="home", version=version, image=image, head=head)
@@ -527,11 +706,9 @@ def post_page(site, post, version):
         style.append(f"--page-bg:{background}")
         text_color = text_color or ("#ffffff" if is_dark(background) else "#111111")
     elif background:
-        # The image fills the screen; a tap shows the text over it, in the chosen style.
-        intro = (f'<div class="post-bg" aria-hidden="true">{img_tag(background, "", folder, lazy=False)}</div>\n'
-                 '<button class="reveal" type="button" aria-controls="post" aria-label="Show the text"></button>\n')
+        # The image fills the screen behind the text, in the chosen style.
+        intro = f'<div class="post-bg" aria-hidden="true">{img_tag(background, "", folder, lazy=False, sizes="100vw")}</div>\n'
         body_class += f" has-bg bg-{post['bg_style']}"
-        head += "<script>document.documentElement.classList.add('js')</script>\n"
     if text_color:
         style.append(f"--post-ink:{text_color}")
     banner_block = ""
@@ -558,7 +735,8 @@ def post_page(site, post, version):
     slug = quote(post["slug"])
     return page(site, title=post["title"], description=post["description"], root="../../", body=body,
                 body_class=body_class, version=version, path=f"posts/{slug}/",
-                image=f"posts/{slug}/{cover}", head=head, foot=foot, body_style=";".join(style))
+                image=f"posts/{slug}/{cover}", head=head, foot=foot, body_style=";".join(style),
+                robots="noindex" if post["hidden"] else "")
 
 
 def about_page(site, version):
@@ -617,7 +795,7 @@ def admin_page(site, version):
 <p class="hint" id="cover-note"></p>
 </div>
 <label>Text<textarea id="text" rows="14"></textarea></label>
-<p class="hint">Blank line for a new paragraph. **bold**, [link text](https://…), ## heading. A YouTube or Vimeo link on its own line becomes a player.</p>
+<p class="hint">Blank line for a new paragraph. **bold**, [link text](https://…), ## heading. A YouTube or Vimeo link on its own line becomes a player. Use "text" next to a file below for its description and caption.</p>
 <div class="about-only" hidden>
 <label>Contact links, one per line: label | address<textarea id="contacts" rows="5" autocapitalize="off"></textarea></label>
 <p class="hint">For example: Email | mailto:name@example.com</p>
@@ -655,6 +833,7 @@ def admin_page(site, version):
 <button class="button" id="publish" type="button">Publish</button>
 <button class="button quiet" id="delete" type="button" hidden>Delete post</button>
 </div>
+<p class="hint"><a id="preview" href="#" target="_blank" rel="noopener" hidden>Preview this hidden post (address not listed anywhere)</a></p>
 <p id="status" role="status"></p>
 </main>
 <script>window.SITE_CONFIG={config};</script>
@@ -667,6 +846,63 @@ def admin_page(site, version):
 # --------------------------------------------------------------------------
 # Build
 # --------------------------------------------------------------------------
+
+def feed_xml(site, posts):
+    """RSS 2.0 feed of the published posts."""
+    base = site["url"]
+    items = []
+    for p in posts[:30]:
+        link = f'{base}/posts/{quote(p["slug"])}/'
+        when = datetime.datetime.combine(p["date"], datetime.time(12), datetime.timezone.utc)
+        cover = f'{base}/posts/{quote(p["slug"])}/{quote(p["cover"])}'
+        summary = esc(f'<p><img src="{cover}" alt=""></p><p>{esc(p["description"])}</p>')
+        items.append(f"""<item>
+<title>{esc(p["title"])}</title>
+<link>{link}</link>
+<guid>{link}</guid>
+<pubDate>{format_datetime(when)}</pubDate>
+<description>{summary}</description>
+</item>""")
+    return f"""<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+<channel>
+<title>{esc(site["title"])}</title>
+<link>{base}/</link>
+<description>{esc(site["description"])}</description>
+{chr(10).join(items)}
+</channel>
+</rss>
+"""
+
+
+def make_favicon(site):
+    """Round favicon from the GitHub profile picture of the repository owner."""
+    owner = (site.get("repo") or "").split("/")[0]
+    if not owner or Image is None:
+        return False
+    cache = CACHE / "favicon"
+    source = cache / "avatar.png"
+    try:
+        cache.mkdir(parents=True, exist_ok=True)
+        with urllib.request.urlopen(f"https://github.com/{quote(owner)}.png?size=360", timeout=15) as response:
+            source.write_bytes(response.read())
+    except OSError:
+        if not source.exists():
+            warn_once("favicon", "could not fetch the GitHub profile picture: no favicon")
+            return False
+    with Image.open(source) as avatar:
+        avatar = ImageOps.fit(avatar.convert("RGB"), (360, 360))
+        mask = Image.new("L", (1440, 1440), 0)
+        ImageDraw.Draw(mask).ellipse((0, 0, 1439, 1439), fill=255)
+        mask = mask.resize((360, 360), Image.LANCZOS)  # smooth edge
+        round_icon = avatar.copy()
+        round_icon.putalpha(mask)
+        round_icon.resize((64, 64), Image.LANCZOS).save(OUT / "favicon.png")
+        touch = Image.new("RGB", (360, 360), "black")
+        touch.paste(avatar, (0, 0), mask)
+        touch.resize((180, 180), Image.LANCZOS).save(OUT / "apple-touch-icon.png")
+    return True
+
 
 def write(path, text):
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -694,19 +930,22 @@ def build():
     if static.exists():
         shutil.copytree(static, OUT, dirs_exist_ok=True)
 
+    site["_favicon"] = make_favicon(site)
+
+    # Hidden posts are built too, at an unlisted address (noindex) so they can be
+    # previewed; they are left out of the home page and the feed.
+    for post in everything:
+        publish_files(post["folder"], OUT / "posts" / post["slug"])
+
     write(OUT / "index.html", home_page(site, posts, version))
+    write(OUT / "feed.xml", feed_xml(site, posts))
     write(OUT / "about" / "index.html", about_page(site, version))
     write(OUT / "404.html", not_found_page(site, version))
     write(OUT / "admin" / "index.html", admin_page(site, version))
     shutil.copy2(SRC / "admin.js", OUT / "admin" / "admin.js")
 
-    for post in posts:
-        target = OUT / "posts" / post["slug"]
-        target.mkdir(parents=True)
-        for item in post["folder"].iterdir():
-            if item.is_file() and item.name != "post.md" and not item.name.startswith("."):
-                shutil.copy2(item, target / item.name)
-        write(target / "index.html", post_page(site, post, version))
+    for post in everything:
+        write(OUT / "posts" / post["slug"] / "index.html", post_page(site, post, version))
 
     # Read by the editor; hidden posts are listed here so they can be reopened.
     index = [

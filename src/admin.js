@@ -130,12 +130,30 @@
 
   var kb = function (bytes) { return Math.max(1, Math.round(bytes / 1024)) + ' KB'; };
 
-  // Take every "![...](name)" line for this file out of the text.
-  var unlink = function (name) {
+  // A media line in the text: ![description](file "caption") loop
+  var mediaLine = function (name, flags) {
     var safe = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    var line = new RegExp('^[ \\t]*!\\[[^\\]]*\\]\\(' + safe + '\\)[ \\t]*$', 'gm');
-    $('text').value = $('text').value.replace(line, '').replace(/\n{3,}/g, '\n\n').trim();
+    return new RegExp('^[ \\t]*!\\[([^\\]]*)\\]\\(' + safe + '(?:\\s+"([^"]*)")?\\)(\\s+loop)?[ \\t]*$', flags || 'm');
   };
+
+  // Take every line for this file out of the text.
+  var unlink = function (name) {
+    $('text').value = $('text').value.replace(mediaLine(name, 'gm'), '').replace(/\n{3,}/g, '\n\n').trim();
+  };
+
+  var readLine = function (name) {
+    var match = mediaLine(name).exec($('text').value);
+    return match ? { alt: match[1], caption: match[2] || '', loop: !!match[3] } : null;
+  };
+
+  var writeLine = function (name, data) {
+    var line = '![' + data.alt.replace(/[\[\]\n]/g, ' ') + '](' + name +
+      (data.caption ? ' "' + data.caption.replace(/\n/g, ' ').replace(/"/g, '\u201d') + '"' : '') + ')' + (data.loop ? ' loop' : '');
+    $('text').value = $('text').value.replace(mediaLine(name), line);
+  };
+
+  var isVideo = function (name) { return /\.(mp4|webm|mov|m4v|ogv)$/i.test(name); };
+  var openDetails = {}; // media rows whose description fields are open
 
   var isImage = function (name) { return /\.(jpe?g|png|webp|gif|avif|svg|heic|heif)$/i.test(name); };
 
@@ -192,6 +210,22 @@
           row.appendChild(button);
         });
       }
+      var details = null;
+      var describable = !entry.cover && (isImage(entry.name) || isVideo(entry.name) || /\.(mp3|m4a|aac|wav|ogg|oga|flac|opus)$/i.test(entry.name));
+      if (describable) {
+        var edit = document.createElement('button');
+        edit.type = 'button';
+        edit.className = 'flag';
+        edit.textContent = 'text';
+        edit.setAttribute('aria-label', 'Description and caption of ' + entry.name);
+        edit.setAttribute('aria-expanded', openDetails[entry.name] ? 'true' : 'false');
+        edit.addEventListener('click', function () {
+          openDetails[entry.name] = !openDetails[entry.name];
+          renderMedia();
+        });
+        row.appendChild(edit);
+        if (openDetails[entry.name]) details = describe(entry.name);
+      }
       var remove = document.createElement('button');
       remove.type = 'button';
       remove.className = 'remove';
@@ -208,7 +242,53 @@
       });
       row.appendChild(remove);
       list.appendChild(row);
+      if (details) list.appendChild(details);
     });
+  };
+
+  // Fields for one media line: description (alt text), caption, loop for videos.
+  var describe = function (name) {
+    var box = document.createElement('li');
+    box.className = 'details';
+    var data = readLine(name);
+    if (!data) {
+      box.textContent = 'This file is not in the text (add its line to describe it).';
+      return box;
+    }
+    var field = function (label, value, hint, key) {
+      var wrap = document.createElement('label');
+      wrap.textContent = label;
+      var input = document.createElement('input');
+      input.value = value;
+      input.placeholder = hint;
+      input.addEventListener('input', function () {
+        var current = readLine(name);
+        if (!current) return;
+        current[key] = input.value;
+        writeLine(name, current);
+      });
+      wrap.appendChild(input);
+      box.appendChild(wrap);
+    };
+    field('Description, for people who cannot see it', data.alt, 'What the image shows', 'alt');
+    field('Caption, shown under it (optional)', data.caption, '', 'caption');
+    if (isVideo(name)) {
+      var check = document.createElement('label');
+      check.className = 'check';
+      var box2 = document.createElement('input');
+      box2.type = 'checkbox';
+      box2.checked = data.loop;
+      box2.addEventListener('change', function () {
+        var current = readLine(name);
+        if (!current) return;
+        current.loop = box2.checked;
+        writeLine(name, current);
+      });
+      check.appendChild(box2);
+      check.appendChild(document.createTextNode('Loop without sound or controls (short clips)'));
+      box.appendChild(check);
+    }
+    return box;
   };
 
   // Switch the form between a post and the about page.
@@ -277,6 +357,8 @@
     state.removed = [];
     state.flags = { background: null, banner: null };
     state.about = null;
+    openDetails = {};
+    $('preview').hidden = true;
     state.slugTouched = false;
     showAbout(false);
     $('font').value = 'helvetica';
@@ -416,6 +498,10 @@
       showTextColor();
       $('font').value = /^(oswald|typewriter)$/.test(parsed.meta.font || '') ? parsed.meta.font : 'helvetica';
       $('delete').hidden = false;
+      if (isTrue(parsed.meta.draft)) {
+        $('preview').href = '../posts/' + slug + '/';
+        $('preview').hidden = false;
+      }
       labelPublish();
       $('cover-note').textContent = 'Current cover: ' + state.editing.cover + '. Choose a file only to replace it.';
       state.existing = (Array.isArray(found[1]) ? found[1] : []).filter(function (entry) {

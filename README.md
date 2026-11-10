@@ -51,12 +51,17 @@ Text of the post. A blank line starts a new paragraph.
 https://www.youtube.com/watch?v=XXXXXXXXXXX
 ```
 
+- `![description](file "caption")` on its own line places an image, a video
+  or an audio file; description (read by screen readers) and caption are
+  optional. Add ` loop` after a short video to play it like a living image:
+  silent, looping, no controls. The editor writes these for you ("text").
 - `![](file)` on its own line places an image, a video (`.mp4`, `.webm`, `.mov`)
   or an audio file (`.mp3`, `.m4a`, `.aac`, `.wav`, `.ogg`) from the post folder.
   Consecutive media sit together with no gap between them.
 - A YouTube or Vimeo link on its own line becomes a player.
 - `## Heading`, `**bold**`, `[text](https://...)`, `- list item`.
-- `draft: true` in the header hides a post: it stays in the repository but is not published.
+- `draft: true` in the header hides a post: it is left out of the home page and
+  the feed, but can be previewed at its address (not indexed by search engines).
 - `pinned: true` keeps a post first on the home page, above newer ones.
 - `background: photo.jpg` opens the post on that image, full screen; a tap (or
   scrolling down) shows the text over it. `background-style` sets how:
@@ -132,3 +137,17 @@ column on big screens (`--column-ratio`) are variables at the top of
 `src/style.css`. The one-photo-per-gesture timing for mouse and trackpad
 (`GESTURE_GAP`, `MIN_STEP`, `THRESHOLD`) is at the top of the home section in
 `src/app.js`. Icons are inline SVG in `ICONS` in `build.py`.
+
+## Images, video and the rest of the build
+
+- Photos are published with WebP copies at 600, 1200 and 2000 px; each browser
+  downloads the size it needs. `.mov` videos become `.mp4` with a poster frame.
+  This needs `pip install -r requirements.txt` (the deploy workflow does it);
+  without it the site still builds, with the original files. Results are kept
+  in `.cache/`.
+- The favicon is the repository owner's GitHub profile picture, cropped round,
+  fetched at each deploy.
+- `feed.xml` is an RSS feed of the published posts.
+- The home page has three views, cycled by the top right icon: full screen,
+  grid (titles appear on hover with a mouse) and index (titles and dates).
+

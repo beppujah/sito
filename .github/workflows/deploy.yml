@@ -22,6 +22,18 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install image and video tools
+        run: pip install -r requirements.txt
+      # Resized images and converted videos are kept between deploys.
+      - uses: actions/cache@v4
+        with:
+          path: .cache
+          key: media-${{ hashFiles('content/posts/**') }}
+          restore-keys: media-
       - name: Build
         run: python3 build.py
       - uses: actions/upload-pages-artifact@v3

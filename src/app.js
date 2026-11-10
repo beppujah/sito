@@ -2,6 +2,7 @@
   'use strict';
 
   var root = document.documentElement;
+  var reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   /* ------------------------------------------------------------------
      Back arrow: return to where the visitor came from (same view and
@@ -18,7 +19,7 @@
   });
 
   /* ------------------------------------------------------------------
-     Home: full screen <-> grid. The page itself scrolls (no inner scroll
+     Home: full screen -> grid -> index. The page itself scrolls (no inner scroll
      box) so mobile browsers can shrink their bars while scrolling down.
      ------------------------------------------------------------------ */
   var feed = document.getElementById('feed');
@@ -44,6 +45,7 @@
     // Slide to a photo with our own animation. Snapping is paused meanwhile:
     // some browsers (Safari) cancel a smooth scroll on a snapping page.
     var slideTo = function (target) {
+      if (reduceMotion) return window.scrollTo(0, target);
       var start = window.scrollY;
       var distance = target - start;
       var began = null;
@@ -67,29 +69,43 @@
       else window.scrollTo(0, items[index].offsetTop);
     };
 
+    var NEXT = { full: 'grid', grid: 'index', index: 'full' };
+    var NAMES = { full: 'full screen view', grid: 'grid view', index: 'index of titles' };
+    var lastIndex = 0; // photo in view before switching to the index
+
     var label = function () {
-      modeButton.setAttribute(
-        'aria-label',
-        root.dataset.mode === 'grid' ? 'Switch to full screen view' : 'Switch to grid view'
-      );
+      modeButton.setAttribute('aria-label', 'Switch to ' + NAMES[NEXT[root.dataset.mode] || 'grid']);
+    };
+
+    // Image sizes for the browser to pick the right file: large in full screen, small in the grid.
+    var sizes = function () {
+      var value = root.dataset.mode === 'grid' ? '(min-width: 768px) 25vh, 34vw' : '(min-width: 768px) 75vh, 100vw';
+      items.forEach(function (item) {
+        var img = item.querySelector('img[srcset]');
+        if (img && img.getAttribute('sizes') !== value) img.setAttribute('sizes', value);
+      });
     };
 
     var setMode = function (mode) {
-      var index = currentIndex();
+      var index = root.dataset.mode === 'index' ? lastIndex : currentIndex();
+      if (mode === 'index') lastIndex = index;
       root.dataset.mode = mode;
-      history.replaceState(null, '', mode === 'grid' ? '#grid' : location.pathname + location.search);
-      goTo(index); // keep the same post in view
+      history.replaceState(null, '', mode === 'full' ? location.pathname + location.search : '#' + mode);
+      sizes();
+      if (mode === 'index') window.scrollTo(0, 0);
+      else goTo(index); // keep the same post in view
       label();
     };
 
     modeButton.addEventListener('click', function () {
-      setMode(root.dataset.mode === 'grid' ? 'full' : 'grid');
+      setMode(NEXT[root.dataset.mode] || 'grid');
     });
 
     window.addEventListener('hashchange', function () {
-      var mode = location.hash === '#grid' ? 'grid' : 'full';
+      var mode = { '#grid': 'grid', '#index': 'index' }[location.hash] || 'full';
       if (mode !== root.dataset.mode) setMode(mode);
     });
+    sizes();
 
     /* Mouse wheel and trackpad, full screen only: one photo per gesture.
        A swipe moves exactly one photo. After a trackpad swipe the system
@@ -175,41 +191,15 @@
   });
 
   /* ------------------------------------------------------------------
-     Post with a background image: a tap (or scrolling down) shows
-     the text over a faded cover; a tap on an empty area, or Escape,
-     goes back to the plain cover.
+     Short looping clips: for visitors who asked for less motion they do
+     not start by themselves; they get the usual controls instead.
      ------------------------------------------------------------------ */
-  var reveal = document.querySelector('.reveal');
-  if (reveal) {
-    var body = document.body;
-    var show = function () {
-      if (body.classList.contains('reading')) return;
-      body.classList.add('reading');
-      window.scrollTo(0, 0);
-    };
-    var hide = function () {
-      body.classList.remove('reading');
-      reveal.focus({ preventScroll: true });
-    };
-    reveal.addEventListener('click', show);
-    window.addEventListener('wheel', function (event) {
-      if (!body.classList.contains('reading') && event.deltaY > 0) show();
-    }, { passive: true });
-    var touchY = null;
-    window.addEventListener('touchstart', function (event) { touchY = event.touches[0].clientY; }, { passive: true });
-    window.addEventListener('touchmove', function (event) {
-      if (touchY !== null && !body.classList.contains('reading') && touchY - event.touches[0].clientY > 30) {
-        touchY = null;
-        show();
-      }
-    }, { passive: true });
-    document.getElementById('post').addEventListener('click', function (event) {
-      var blank = event.target === this || /^(ARTICLE|HEADER|SECTION)$/.test(event.target.tagName) ||
-        event.target.classList.contains('post-body') || event.target.classList.contains('reactions-box');
-      if (blank && !String(window.getSelection())) hide();
-    });
-    document.addEventListener('keydown', function (event) {
-      if (event.key === 'Escape' && body.classList.contains('reading')) hide();
+  if (reduceMotion) {
+    Array.prototype.forEach.call(document.querySelectorAll('.loop video'), function (video) {
+      video.removeAttribute('autoplay');
+      video.pause();
+      video.controls = true;
+      video.style.pointerEvents = 'auto';
     });
   }
 

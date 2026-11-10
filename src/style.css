@@ -3,7 +3,7 @@
    --------------------------------------------------------------- */
 :root {
   --ink: #111;
-  --muted: #8c8c8c;
+  --muted: #737373;     /* 4.7:1 on white: readable small text */
   --paper: #fff;
   --font: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
   --text-width: 40rem;    /* width of the text column */
@@ -68,8 +68,20 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .home .corner-left { left: max(0.6rem, env(safe-area-inset-left), calc(50% - var(--column) / 2 + 0.6rem)); }
 .home .corner-right { right: max(0.6rem, env(safe-area-inset-right), calc(50% - var(--column) / 2 + 0.6rem)); }
 
-html[data-mode="full"] .icon-expand,
-html[data-mode="grid"] .icon-grid { display: none; }
+/* The mode button shows the view it switches to: full -> grid -> index -> full. */
+.icon-grid, .icon-list, .icon-expand { display: none; }
+html[data-mode="full"] .icon-grid,
+html[data-mode="grid"] .icon-list,
+html[data-mode="index"] .icon-expand { display: block; }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 
 /* ---------------------------------------------------------------
    Home: full screen feed and grid, in a column centred on big screens
@@ -84,7 +96,56 @@ html[data-mode="full"] { scroll-snap-type: y mandatory; }
   margin-inline: auto;
 }
 
-.item { display: block; overflow: hidden; background: #111 var(--spinner) center / 22px no-repeat; }
+.item {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  background: #111 var(--spinner) center / 22px no-repeat;
+}
+
+/* Titles: hidden, shown small on hover in the grid (devices with a mouse). */
+.item-title { display: none; }
+@media (hover: hover) {
+  html[data-mode="grid"] .item-title {
+    display: block;
+    position: absolute;
+    left: 0.7rem;
+    right: 0.7rem;
+    bottom: 0.6rem;
+    font-size: 0.75rem;
+    line-height: 1.3;
+    color: #fff;
+    mix-blend-mode: difference;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  html[data-mode="grid"] .item:hover .item-title,
+  html[data-mode="grid"] .item:focus-visible .item-title { opacity: 1; }
+}
+
+/* Index: titles and dates only. */
+.index { display: none; }
+html[data-mode="index"] .feed { display: none; }
+html[data-mode="index"] .index {
+  display: block;
+  width: min(100%, 40rem);
+  margin-inline: auto;
+  padding: 5.5rem 1.25rem 4rem;
+}
+.index ol { list-style: none; margin: 0; padding: 0; }
+.index a {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px solid #262626;
+  color: #fff;
+  text-decoration: none;
+  font-size: 0.95rem;
+}
+.index a span { flex: 1; min-width: 0; }
+.index time { flex: none; color: #9a9a9a; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+@media (hover: hover) { .index a:hover span { text-decoration: underline; text-underline-offset: 0.2em; } }
 .item img { width: 100%; height: 100%; object-fit: cover; }
 
 html[data-mode="full"] .item {
@@ -160,6 +221,13 @@ time { color: var(--muted); font-size: 0.85rem; }
 .media .embed { aspect-ratio: 16 / 9; }
 .media .embed iframe { width: 100%; height: 100%; }
 .media .audio { padding: 0.75rem 1.25rem; }
+.media figcaption {
+  padding: 0.45rem 1.25rem 0.9rem;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.media .loop video { pointer-events: none; }
 .media audio { display: block; width: 100%; }
 
 /* Big screens: media keep a sensible size instead of filling the width. */
@@ -185,14 +253,16 @@ time { color: var(--muted); font-size: 0.85rem; }
     height: auto;
   }
   .post-body > .media { padding-inline: 1.25rem; }
+  .media video[style*="--ratio"] { width: min(100%, calc(var(--media-height) * var(--ratio))); height: auto; }
+  .media figcaption { padding-inline: 0; text-align: center; }
   .media .audio { padding-inline: 0; }
 }
 
 /* ---------------------------------------------------------------
    Post backgrounds (chosen in the editor)
-   - image: the post opens on the image; a tap shows the text over it in
-     one of three styles: faded, bw (black and white) or difference.
-   - colour: a solid page colour, text shown straight away.
+   - image: fixed behind the text, in one of three styles: faded,
+     bw (black and white) or difference.
+   - colour: a solid page colour.
    The text colour is --post-ink when set, otherwise a default per style.
    --------------------------------------------------------------- */
 .page #post { color: var(--post-ink, var(--auto-ink, var(--ink))); }
@@ -209,13 +279,13 @@ time { color: var(--muted); font-size: 0.85rem; }
 .has-bg { background: transparent; }
 
 .bg-faded { --auto-ink: #111; }
-.bg-faded.reading .post-bg img, html:not(.js) .bg-faded .post-bg img {
+.bg-faded .post-bg img {
   filter: var(--bg-faded);
   transform: scale(1.04); /* hides the soft edge left by the blur */
 }
 
 .bg-bw { --auto-ink: #fff; }
-.bg-bw.reading .post-bg img, html:not(.js) .bg-bw .post-bg img { filter: var(--bg-bw); }
+.bg-bw .post-bg img { filter: var(--bg-bw); }
 
 .bg-difference { --auto-ink: #fff; }
 .bg-difference .post-head,
@@ -224,25 +294,15 @@ time { color: var(--muted); font-size: 0.85rem; }
 
 .bg-color { background: var(--page-bg); }
 
-.reveal { display: none; }
-.js .has-bg:not(.reading) .reveal {
-  display: block;
-  position: fixed;
-  inset: 0;
-  z-index: 5;
-  width: 100%;
-  cursor: pointer;
-}
-.js .has-bg:not(.reading) main { display: none; }
-
 /* Secondary text follows the text colour, a little lighter. */
 .has-bg time, .bg-color time,
 .has-bg .reaction, .bg-color .reaction,
 .has-bg .reaction .count, .bg-color .reaction .count,
 .has-bg .reactions-info, .bg-color .reactions-info,
-.has-bg .reactions-note, .bg-color .reactions-note { color: color-mix(in srgb, currentColor 70%, transparent); }
+.has-bg .reactions-note, .bg-color .reactions-note,
+.has-bg figcaption, .bg-color figcaption { color: color-mix(in srgb, currentColor 78%, transparent); }
 .has-bg .reaction, .bg-color .reaction,
-.has-bg .reactions-info, .bg-color .reactions-info { color: color-mix(in srgb, var(--post-ink, var(--auto-ink, var(--ink))) 65%, transparent); }
+.has-bg .reactions-info, .bg-color .reactions-info { color: color-mix(in srgb, var(--post-ink, var(--auto-ink, var(--ink))) 75%, transparent); }
 .has-bg .reaction[aria-pressed="true"], .bg-color .reaction[aria-pressed="true"] { color: var(--post-ink, var(--auto-ink, var(--ink))); }
 @media (hover: hover) {
   .has-bg .reaction:hover, .bg-color .reaction:hover { color: var(--post-ink, var(--auto-ink, var(--ink))); }
@@ -273,7 +333,7 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; 
   justify-items: center;
   gap: 0.2rem;
   padding-block: 0.35rem;
-  color: #a3a3a3;
+  color: #8a8a8a;      /* 3.4:1 on white: enough for icons */
   transition: color 0.15s;
 }
 .reaction svg { width: 24px; height: 24px; }
@@ -357,6 +417,8 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; 
   color: var(--muted);
 }
 #media-list .remove:hover { color: #b3261e; }
+#media-list li.details { display: block; padding: 0 0 0.8rem 0.9rem; border-left: 1px solid #d4d4d4; }
+#media-list li.details label { margin-top: 0.6rem; }
 .admin label.check {
   display: flex;
   align-items: center;
@@ -379,3 +441,8 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; 
 .button:disabled { opacity: 0.4; cursor: default; }
 #status { min-height: 1.6em; margin-top: 1rem; font-size: 0.9rem; }
 #status.error { color: #b3261e; }
+
+/* Visitors who asked their system for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
