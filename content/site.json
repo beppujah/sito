@@ -28,5 +28,14 @@
   },
   "options": {
     "home_reactions": true
-  }
+  },
+  "order": [
+    "everything-and-the-opposite-of-everything",
+    "proviamo",
+    "boh",
+    "lorem-ipsum",
+    "tes3",
+    "test",
+    "chlorophone"
+  ]
 }
