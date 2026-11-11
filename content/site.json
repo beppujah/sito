@@ -6,8 +6,12 @@
   "branch": "main",
   "contact": [
     {
+      "label": "Insectarium",
+      "url": "https://beppujah.github.io/insectarium/"
+    },
+    {
       "label": "Email",
-      "url": "mailto:you@example.com"
+      "url": "beppujah [at] gmail [dot] com"
     },
     {
       "label": "YouTube",
@@ -16,10 +20,6 @@
     {
       "label": "GitHub",
       "url": "https://github.com/beppujah"
-    },
-    {
-      "label": "Ko-fi",
-      "url": "https://ko-fi.com/beppujah"
     }
   ],
   "reactions": {
