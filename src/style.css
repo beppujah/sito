@@ -45,6 +45,19 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Installed on a phone (Add to Home Screen), the page runs under the status
+   bar. A black strip sits behind it on every page; the full screen home has
+   none, so its photos reach the top edge of the screen. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 20;
+  height: env(safe-area-inset-top);
+  background: #000;
+}
+html[data-mode="full"] body::before { display: none; }
+
 /* No italics anywhere. */
 em, i, cite, address, dfn, var { font-style: normal; }
 

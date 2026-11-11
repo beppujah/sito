@@ -686,6 +686,10 @@ def page(site, *, title, description, root, body, body_class, version, path="", 
     meta.append(f'<link rel="manifest" href="{root}manifest.webmanifest">')
     meta.append('<meta name="mobile-web-app-capable" content="yes">')
     meta.append('<meta name="apple-mobile-web-app-capable" content="yes">')
+    # Installed on an iPhone: the page runs under the status bar (white clock and
+    # battery). Full screen photos reach the top edge; elsewhere style.css puts a
+    # black strip behind the status bar.
+    meta.append('<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">')
     meta.append(f'<meta name="apple-mobile-web-app-title" content="{esc(site["title"])}">')
     meta.append(f'<link rel="alternate" type="application/rss+xml" title="{esc(site["title"])}" href="{root}feed.xml">')
     base_tag = f'<base href="{base}">\n' if base else ""
@@ -885,6 +889,7 @@ def admin_page(site, version):
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="robots" content="noindex">
 <title>Editor — {esc(site["title"])}</title>
 <link rel="stylesheet" href="../assets/style.css?v={version}">
