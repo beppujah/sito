@@ -1,7 +1,8 @@
 ---
 title: Hello World!
 background: img-0827.jpg
-background-style: difference
+background-style: bw
+banner: img-0827.jpg
 text-color: #ffcc02
 ---
 
