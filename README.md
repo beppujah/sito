@@ -13,7 +13,7 @@ turns the `content/` folder into a static site.
 
 ```
 content/
-  site.json          site title, address, repository, contact links, reactions backend
+  site.json          site title, address, repository, about sections, reactions backend
   about/             the about page: post.md (title, text, looks) and its media
   posts/<name>/      one folder per post
     post.md          title, date, cover + text
@@ -29,7 +29,7 @@ reactions.sql        optional shared backend for reactions
 
 1. Push this folder to the GitHub repository (branch `main`).
 2. In the repository: Settings > Pages > Source: **GitHub Actions**.
-3. Check `url`, `repo` and the contact links in `content/site.json`.
+3. Check `url` and `repo` in `content/site.json`.
 
 Every push to `main` rebuilds and publishes the site in about a minute.
 
@@ -106,7 +106,12 @@ to 2400 px before upload.
   and the banner (one each, or none). **Font** picks the post's font.
 - **About page** in the Post list edits the about page like a post (title, text,
   media, background, banner, font, text colour, no cover or date) and the
-  contact links.
+  sections under its text. Each section has a title (Contact, for example) and
+  a text, both editable and written like a post: plain words, `[text](https://...)`,
+  `**bold**`, `- list item`. "Add section" adds one, "Move up" changes the order,
+  "Remove section" deletes it. The Italiano tab holds the Italian title and
+  text of each section (the English ones are used where they are empty). They
+  are saved in `content/site.json` under `sections`.
 - **All posts** in the Post list hides, shows or deletes several posts at once,
   in a single save. Drag the handles to set the order of the posts on the site
   (saved as `order` in `content/site.json`); pinned posts stay first and new

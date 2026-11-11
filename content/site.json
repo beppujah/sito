@@ -4,22 +4,12 @@
   "url": "https://beppujah.github.io/sito",
   "repo": "beppujah/sito",
   "branch": "main",
-  "contact": [
+  "sections": [
     {
-      "label": "Insectarium",
-      "url": "https://beppujah.github.io/insectarium/"
-    },
-    {
-      "label": "Email",
-      "url": "beppujah [at] gmail [dot] com"
-    },
-    {
-      "label": "YouTube",
-      "url": "https://www.youtube.com/@beppujah"
-    },
-    {
-      "label": "GitHub",
-      "url": "https://github.com/beppujah"
+      "title": "Contact",
+      "title_it": "Contatti",
+      "text": "- [Insectarium](https://beppujah.github.io/insectarium/)\n- Email: beppujah [at] gmail [dot] com\n- [YouTube](https://www.youtube.com/@beppujah)\n- [GitHub](https://github.com/beppujah)",
+      "text_it": ""
     }
   ],
   "reactions": {

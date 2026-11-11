@@ -102,7 +102,11 @@
 
   $('translate').addEventListener('click', function () {
     var button = $('translate');
-    var filled = $('title-it').value.trim() || $('text-it').value.trim();
+    var sections = state.about ? document.querySelectorAll('#sections .section') : [];
+    var filled = $('title-it').value.trim() || $('text-it').value.trim() ||
+      Array.prototype.some.call(sections, function (box) {
+        return box.querySelector('.section-title-it').value.trim() || box.querySelector('.section-text-it').value.trim();
+      });
     if (filled && !button.classList.contains('danger')) { // first tap arms when it would overwrite
       button.textContent = 'Tap again to replace the Italian text';
       button.classList.add('danger');
@@ -117,6 +121,19 @@
       return translateText($('text').value);
     }).then(function (textIt) {
       $('text-it').value = textIt;
+      var chain = Promise.resolve(); // about page: its sections too, one after the other
+      Array.prototype.forEach.call(sections, function (box) {
+        chain = chain.then(function () {
+          return translateText(box.querySelector('.section-title').value.trim());
+        }).then(function (titleIt) {
+          box.querySelector('.section-title-it').value = titleIt;
+          return translateText(box.querySelector('.section-text').value);
+        }).then(function (sectionIt) {
+          box.querySelector('.section-text-it').value = sectionIt;
+        });
+      });
+      return chain;
+    }).then(function () {
       status('Translated. Read it through, then publish.');
     }).catch(function (error) {
       status(error.message + '. You can write the Italian text by hand.', true);
@@ -427,7 +444,7 @@
   // Switch the form between a post, the about page and the site settings.
   var showSection = function (name) {
     // The about page uses the post form too, without cover, date, address,
-    // hidden and pinned, and with the contact links.
+    // hidden and pinned, and with the sections under the text (Contact, ...).
     ['post', 'about', 'settings', 'bulk'].forEach(function (section) {
       Array.prototype.forEach.call(document.querySelectorAll('.' + section + '-only'), function (el) {
         el.hidden = !(section === name || (section === 'post' && name === 'about'));
@@ -520,7 +537,7 @@
     $('text-color-mode').value = '';
     showBackground();
     showTextColor();
-    $('contacts').value = '';
+    $('sections').textContent = '';
     ['title', 'slug', 'text', 'cover', 'media'].forEach(function (id) { $(id).value = ''; });
     $('hidden').checked = false;
     $('pinned').checked = false;
@@ -646,9 +663,8 @@
       }
       if (about) {
         state.about = { site: JSON.parse(decode(found[2])) };
-        $('contacts').value = (state.about.site.contact || []).map(function (link) {
-          return link.label + ' | ' + link.url;
-        }).join('\n');
+        $('sections').textContent = '';
+        siteSections(state.about.site).forEach(addSection);
         showSection('about');
       }
       $('title').value = parsed.meta.title || '';
@@ -705,19 +721,82 @@
 
   /* ---------------- about page ---------------- */
 
-  // Contact links from the "label | address" lines.
-  var readContacts = function () {
-    var contacts = [];
-    var bad = '';
-    $('contacts').value.split('\n').forEach(function (line) {
-      if (!line.trim()) return;
-      var at = line.indexOf('|');
-      var label = at > 0 ? line.slice(0, at).trim() : '';
-      var url = at > 0 ? line.slice(at + 1).trim() : '';
-      if (!label || !url) bad = bad || line.trim();
-      else contacts.push({ label: label, url: url });
+  // Sections under the about text: site.json "sections", each with a title
+  // and a text in Markdown, plus optional Italian versions. Older sites have
+  // "contact" instead (label + url): shown as one Contact section.
+  var siteSections = function (site) {
+    if (Array.isArray(site.sections)) return site.sections;
+    var lines = (site.contact || []).map(function (link) {
+      return /^(https?:\/\/|mailto:|tel:|www\.)\S+$/.test(link.url || '')
+        ? '- [' + link.label + '](' + link.url + ')' : '- ' + link.label + ': ' + link.url;
     });
-    return bad ? { error: 'This contact line needs "label | address": ' + bad } : { contacts: contacts };
+    return lines.length ? [{ title: 'Contact', title_it: 'Contatti', text: lines.join('\n') }] : [];
+  };
+
+  // One section of the editor: title and text in both languages, move up, remove.
+  var addSection = function (section) {
+    section = section || {};
+    var box = document.createElement('div');
+    box.className = 'section';
+    var field = function (lang, label, tag, cls, value) {
+      var wrap = document.createElement('label');
+      wrap.className = 'lang-' + lang;
+      wrap.hidden = state.lang !== lang;
+      wrap.appendChild(document.createTextNode(label));
+      var input = document.createElement(tag);
+      input.className = cls;
+      input.value = value || '';
+      if (lang === 'it') input.lang = 'it';
+      if (tag === 'textarea') input.rows = 5;
+      else input.autocomplete = 'off';
+      wrap.appendChild(input);
+      box.appendChild(wrap);
+    };
+    field('en', 'Section title', 'input', 'section-title', section.title);
+    field('it', 'Titolo della sezione (italiano)', 'input', 'section-title-it', section.title_it);
+    field('en', 'Section text', 'textarea', 'section-text', section.text);
+    field('it', 'Testo della sezione (italiano)', 'textarea', 'section-text-it', section.text_it);
+    var tools = document.createElement('p');
+    tools.className = 'bulk-tools';
+    var button = function (label, action) {
+      var el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'flag';
+      el.textContent = label;
+      el.addEventListener('click', action);
+      tools.appendChild(el);
+      return el;
+    };
+    button('Move up', function () {
+      if (box.previousElementSibling) box.parentNode.insertBefore(box, box.previousElementSibling);
+    });
+    var remove = button('Remove section', function () {
+      var empty = !Array.prototype.some.call(box.querySelectorAll('input, textarea'), function (el) { return el.value.trim(); });
+      if (empty || remove.classList.contains('danger')) return box.remove();
+      remove.textContent = 'Tap again to remove'; // first tap arms when there is text to lose
+      remove.classList.add('danger');
+    });
+    box.appendChild(tools);
+    $('sections').appendChild(box);
+    return box;
+  };
+  $('add-section').addEventListener('click', function () {
+    addSection().querySelector(state.lang === 'it' ? '.section-title-it' : '.section-title').focus();
+  });
+
+  // The sections as they are in the form; empty ones are left out.
+  var readSections = function () {
+    var sections = [];
+    Array.prototype.forEach.call(document.querySelectorAll('#sections .section'), function (box) {
+      var value = function (cls) { return box.querySelector('.' + cls).value.trim(); };
+      var section = { title: value('section-title').replace(/\s+/g, ' '), text: value('section-text') };
+      var titleIt = value('section-title-it').replace(/\s+/g, ' ');
+      var textIt = value('section-text-it');
+      if (titleIt) section.title_it = titleIt;
+      if (textIt) section.text_it = textIt;
+      if (section.title || section.text || titleIt || textIt) sections.push(section);
+    });
+    return sections;
   };
 
   /* ---------------- all posts: hide, show, delete ---------------- */
@@ -1016,8 +1095,6 @@
       return;
     }
 
-    var contacts = about ? readContacts() : null;
-    if (contacts && contacts.error) return status(contacts.error, true);
     var folder = state.editing && state.editing.folder || 'content/posts/' + slug + '/';
     var coverName = state.cover ? state.cover.name : state.editing.cover;
     var hidden = !about && $('hidden').checked;
@@ -1067,7 +1144,8 @@
     });
     if (about) {
       var site = state.about.site;
-      site.contact = contacts.contacts;
+      site.sections = readSections();
+      delete site.contact; // older layout, now a section
       tree.push({ path: 'content/site.json', mode: '100644', type: 'blob', content: JSON.stringify(site, null, 2) + '\n' });
       if (state.editing.legacy) tree.push({ path: 'content/about.md', mode: '100644', type: 'blob', sha: null });
     }

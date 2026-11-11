@@ -369,10 +369,17 @@ def _autolink(match):
     return f'<a href="{url}">{url}</a>{tail}'
 
 
+def _link(match):
+    url = match.group(2)
+    if url.lower().startswith("www."):  # [text](www.example.com) is not a page of this site
+        url = "https://" + url
+    return f'<a href="{url}">{match.group(1)}</a>'
+
+
 def inline(text):
     text = esc(text)
     text = re.sub(r"`([^`]+)`", r"<code>\1</code>", text)
-    text = re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)", r'<a href="\2">\1</a>', text)
+    text = re.sub(r"\[([^\]]+)\]\(([^)\s]+)\)", _link, text)
     text = re.sub(r"(?<![\"=\w/>])(https?://[^\s<]+)", _autolink, text)
     text = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", text)
     # Single asterisks would be italics: the design has none, so drop the marks.
@@ -590,6 +597,22 @@ def load_about():
     meta, body = split_front_matter(source.read_text("utf-8"))
     return {"title": meta.get("title") or "About", "body": body, "folder": folder, "it": load_translation(folder),
             **page_looks(folder, meta)}
+
+
+def about_sections(site):
+    """Sections under the about text (site.json "sections"): a title and a text
+    in Markdown each, with optional Italian versions (title_it, text_it).
+    Older sites have "contact" instead, a list of label + url: one Contact section."""
+    if isinstance(site.get("sections"), list):
+        return [s for s in site["sections"] if isinstance(s, dict)]
+    lines = []
+    for link in site.get("contact") or []:
+        label, url = link.get("label", ""), link.get("url", "")
+        is_link = re.match(r"^(https?://|mailto:|tel:|www\.)\S+$", url)
+        lines.append(f"- [{label}]({url})" if is_link else f"- {label}: {url}")
+    if not lines:
+        return []
+    return [{"title": WORDS["en"]["contact"], "title_it": WORDS["it"]["contact"], "text": "\n".join(lines)}]
 
 
 def load_posts():
@@ -822,11 +845,16 @@ def about_page(site, about, version, lang="en"):
     title = (it and it["title"]) or about["title"]
     text = it["body"] if it else about["body"]
     body_class, style, head, intro, banner_block = apply_looks(about, version, "../")
-    links = "".join(
-        f'<li><a href="{esc(link.get("url", ""))}">{esc(link.get("label", ""))}</a></li>'
-        for link in site.get("contact", [])
-    )
-    contact = f'<h2 id="contact">{WORDS[lang]["contact"]}</h2>\n<ul class="links">{links}</ul>' if links else ""
+    sections = []
+    for section in about_sections(site):
+        # Italian page: the Italian title and text, or the English ones where missing.
+        heading = (lang == "it" and section.get("title_it")) or section.get("title") or ""
+        words = (lang == "it" and section.get("text_it")) or section.get("text") or ""
+        if not (heading.strip() or words.strip()):
+            continue
+        html = render_markdown(words, about["folder"]).replace("<ul>", '<ul class="links">')
+        sections.append((f"<h2>{inline(heading.strip())}</h2>\n" if heading.strip() else "") + html)
+    extra = "\n".join(sections)
     body = f"""<a class="corner corner-left" href="../" data-back aria-label="{WORDS[lang]["back"]}">{ICONS["back"]}</a>
 {lang_switch(lang, bool(about["it"]))}{intro}<main id="post">
 <article class="post">
@@ -835,7 +863,7 @@ def about_page(site, about, version, lang="en"):
 </header>
 <div class="post-body">
 {render_markdown(text, about["folder"])}
-{contact}
+{extra}
 </div>
 </article>
 </main>"""
@@ -901,8 +929,9 @@ def admin_page(site, version):
 <label class="check"><input id="opt-home-reactions" type="checkbox">Reactions on the home page: all of them on the right of each photo in full screen, the most chosen one on each photo in the grid</label>
 </div>
 <div class="about-only" hidden>
-<label>Contact links, one per line: label | address<textarea id="contacts" rows="5" autocapitalize="off"></textarea></label>
-<p class="hint">For example: Email | mailto:name@example.com</p>
+<p class="hint">Sections shown under the text, each with its own title (Contact, for example). The text is written like the text above: plain words, [link text](https://…), **bold**, "- " for a list.</p>
+<div id="sections"></div>
+<button class="button quiet" id="add-section" type="button">Add section</button>
 </div>
 <div class="post-only">
 <label>Add images, video or audio at the cursor<input id="media" type="file" multiple accept="image/*,video/*,audio/*"></label>
