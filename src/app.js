@@ -5,6 +5,18 @@
   var reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   /* ------------------------------------------------------------------
+     Installable site: sw.js (at the site root, next to assets/) keeps the
+     visited pages readable offline and lets phones add the site to the
+     home screen. Its address is worked out from the address of this script.
+     ------------------------------------------------------------------ */
+  if ('serviceWorker' in navigator && document.currentScript) {
+    var worker = new URL('../sw.js', document.currentScript.src).href;
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register(worker).catch(function () {});
+    });
+  }
+
+  /* ------------------------------------------------------------------
      Language: the EN / IT switch on posts and the about page. The choice
      is remembered, so the next translated page opens in that language.
      ------------------------------------------------------------------ */

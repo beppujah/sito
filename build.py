@@ -659,6 +659,11 @@ def page(site, *, title, description, root, body, body_class, version, path="", 
     if site.get("_favicon"):
         meta.append(f'<link rel="icon" type="image/png" href="{root}favicon.png">')
         meta.append(f'<link rel="apple-touch-icon" href="{root}apple-touch-icon.png">')
+    # Add to Home Screen: name, icons and colours of the installed site (see make_manifest, src/sw.js).
+    meta.append(f'<link rel="manifest" href="{root}manifest.webmanifest">')
+    meta.append('<meta name="mobile-web-app-capable" content="yes">')
+    meta.append('<meta name="apple-mobile-web-app-capable" content="yes">')
+    meta.append(f'<meta name="apple-mobile-web-app-title" content="{esc(site["title"])}">')
     meta.append(f'<link rel="alternate" type="application/rss+xml" title="{esc(site["title"])}" href="{root}feed.xml">')
     base_tag = f'<base href="{base}">\n' if base else ""
     return f"""<!doctype html>
@@ -1013,7 +1018,36 @@ def make_favicon(site):
         touch = Image.new("RGB", (360, 360), "black")
         touch.paste(avatar, (0, 0), mask)
         touch.resize((180, 180), Image.LANCZOS).save(OUT / "apple-touch-icon.png")
+        # Home screen icons (manifest.webmanifest): square, the picture well inside the
+        # area that phones may crop to a circle or a rounded square.
+        for size in (192, 512):
+            inner = round(size * 0.72)
+            icon = Image.new("RGB", (size, size), "black")
+            icon.paste(avatar.resize((inner, inner), Image.LANCZOS), ((size - inner) // 2,) * 2,
+                       mask.resize((inner, inner), Image.LANCZOS))
+            icon.save(OUT / f"icon-{size}.png")
     return True
+
+
+def make_manifest(site):
+    """Web app manifest: lets phones add the site to the home screen and open it like an app."""
+    manifest = {
+        "name": site["title"],
+        "short_name": site["title"],
+        "description": site.get("description") or "",
+        "id": "./",
+        "start_url": "./",
+        "scope": "./",
+        "display": "standalone",
+        "background_color": "#000000",
+        "theme_color": "#000000",
+        "icons": [],
+    }
+    if site.get("_favicon"):
+        for size in (192, 512):
+            manifest["icons"].append({"src": f"icon-{size}.png", "sizes": f"{size}x{size}", "type": "image/png"})
+        manifest["icons"].append({"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"})
+    return json.dumps(manifest, ensure_ascii=False, indent=1)
 
 
 def write(path, text):
@@ -1026,7 +1060,7 @@ def build():
     everything = sort_posts(load_posts(), site.get("order") or [])
     posts = [post for post in everything if not post["hidden"]]  # hidden posts are not published
     digest = hashlib.sha1()
-    for name in ("style.css", "app.js", "admin.js", "fonts/fonts.css"):
+    for name in ("style.css", "app.js", "admin.js", "fonts/fonts.css", "sw.js"):
         digest.update((SRC / name).read_bytes())
     version = digest.hexdigest()[:8]
 
@@ -1043,6 +1077,9 @@ def build():
         shutil.copytree(static, OUT, dirs_exist_ok=True)
 
     site["_favicon"] = make_favicon(site)
+    write(OUT / "manifest.webmanifest", make_manifest(site))
+    # The service worker has to sit at the site root to cover every page.
+    write(OUT / "sw.js", (SRC / "sw.js").read_text("utf-8").replace("__VERSION__", version))
 
     # Hidden posts are built too, at an unlisted address (noindex) so they can be
     # previewed; they are left out of the home page and the feed.

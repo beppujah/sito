@@ -19,7 +19,7 @@ content/
     post.md          title, date, cover + text
     cover.jpg        cover photo
     ...              any other image, video or audio used in the text
-src/                 style.css, app.js, admin.js
+src/                 style.css, app.js, admin.js, sw.js (service worker)
 build.py             generator (builds into _site/)
 reactions.sql        optional shared backend for reactions
 .github/workflows/deploy.yml   builds and publishes on every push to main
@@ -164,6 +164,12 @@ column on big screens (`--column-ratio`) are variables at the top of
   in `.cache/`.
 - The favicon is the repository owner's GitHub profile picture, cropped round,
   fetched at each deploy.
+- The site can be added to a phone's home screen and opened like an app
+  (iPhone: Share → Add to Home Screen; Android: browser menu → Install app).
+  `build.py` writes `manifest.webmanifest` and the home screen icons (from the
+  same profile picture); `src/sw.js`, published at the site root, keeps the
+  pages and images already visited readable offline. Videos, audio and the
+  editor always use the network.
 - `feed.xml` is an RSS feed of the published posts.
 - The home page has three views, cycled by the top right icon: full screen,
   grid (titles appear on hover with a mouse) and index (titles and dates).
