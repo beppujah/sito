@@ -84,8 +84,6 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 .corner-right { right: max(0.6rem, env(safe-area-inset-right)); }
 .corner svg { width: var(--icon); height: var(--icon); }
 
-/* On the home page the icons sit in the corners of the centred column. */
-.home .corner-left { left: max(0.6rem, env(safe-area-inset-left), calc(50% - var(--column) / 2 + 0.6rem)); }
 .page .corner { color: var(--post-ink, var(--auto-ink, var(--ink))); }
 
 /* Language switch on posts and about: EN IT, the current one full, the other lighter. */
@@ -109,7 +107,6 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 }
 .lang-switch a:not([aria-current]) { opacity: 0.5; }
 @media (hover: hover) { .lang-switch a:not([aria-current]):hover { opacity: 1; } }
-.home .corner-right { right: max(0.6rem, env(safe-area-inset-right), calc(50% - var(--column) / 2 + 0.6rem)); }
 
 /* The mode button shows the view it switches to: full -> grid -> index -> full. */
 .icon-grid, .icon-list, .icon-expand { display: none; }
@@ -245,16 +242,25 @@ html[data-mode="full"] .item {
 }
 
 html[data-mode="grid"] .feed {
+  /* Installed on a phone, the page runs under the status bar and its black
+     strip: the grid starts below it, and three rows fill what is left. */
+  --grid-top: env(safe-area-inset-top, 0px);
+  --grid-row: calc((var(--screen) - var(--grid-top)) / 3);
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  grid-auto-rows: calc(var(--screen) / 3);
-  /* Browsers stop scrolling on whole pixels only, so rows are whole pixels
-     too (a third of 664 px is 221.33: a 1px strip of the row above showed).
-     The padding makes up the missing 1-2 px, so the last rows also line up
-     with the top of the screen. */
-  grid-auto-rows: round(down, calc(var(--screen) / 3), 1px);
-  padding-bottom: calc(var(--screen) - 3 * round(down, calc(var(--screen) / 3), 1px));
+  grid-auto-rows: var(--grid-row);
+  padding-top: var(--grid-top);
   gap: 0;
+}
+/* Browsers stop scrolling on whole pixels only, so rows are whole pixels
+   too (a third of 664 px is 221.33: a 1px strip of the row above showed).
+   The padding makes up the missing 1-2 px, so the last rows also line up
+   with the top of the screen. */
+@supports (height: round(down, 1.5px, 1px)) {
+  html[data-mode="grid"] .feed {
+    --grid-row: round(down, calc((var(--screen) - var(--grid-top)) / 3), 1px);
+    padding-bottom: calc(var(--screen) - var(--grid-top) - 3 * var(--grid-row));
+  }
 }
 
 .empty { text-align: center; padding-top: 45vh; margin: 0; }
