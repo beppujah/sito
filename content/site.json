@@ -21,7 +21,9 @@
     "supabase_anon_key": "sb_publishable_me01OuuqxiCywuCo8XiRVA_WKaA7cPq"
   },
   "options": {
-    "home_reactions": true
+    "home_reactions": true,
+    "home_background": "#000000",
+    "home_text_color": "#ffcc02"
   },
   "order": [
     "everything-and-the-opposite-of-everything",
