@@ -4,7 +4,19 @@
   'use strict';
 
   var API = 'https://api.github.com';
-  var MAX_IMAGE = 2400;            // longest side, in pixels, for uploaded photos
+  var MAX_IMAGE = 2000;            // longest side, in pixels, for uploaded images
+  // What uploaded images are converted to ("Image format" in the editor).
+  // quality: 0 to 1, for the formats that lose detail to save space.
+  var FORMATS = {
+    webp: { type: 'image/webp', ext: 'webp', quality: 0.8 },
+    jpeg: { type: 'image/jpeg', ext: 'jpg', quality: 0.86 },
+    png: { type: 'image/png', ext: 'png' }
+  };
+  var DEFAULT_FORMAT = 'webp';
+  // An image already in the chosen format, no larger than MAX_IMAGE and below
+  // this many bytes is uploaded as it is, not compressed a second time.
+  var KEEP_BELOW = 1500000;
+  var HEIC_DECODER = 'vendor/heic-to.js'; // loaded only when the browser cannot read a HEIC photo
   var MAX_FILE = 25 * 1024 * 1024; // per-file limit for video and audio
 
   var config = window.SITE_CONFIG || {};
@@ -155,6 +167,19 @@
     });
   });
 
+  // The image format is remembered in this browser, like the connection.
+  $('image-format').value = FORMATS[stored('image-format', '')] ? stored('image-format', '') : DEFAULT_FORMAT;
+  $('image-format').addEventListener('change', function () {
+    try { localStorage.setItem('admin-image-format', $('image-format').value); } catch (e) {}
+    showFormat();
+  });
+  var showFormat = function () {
+    $('format-note').textContent = 'Every image chosen from now on is converted to this format and scaled to ' +
+      MAX_IMAGE + ' px before upload, whatever it was (HEIC from a phone included). Animated GIF and SVG are left as they are.' +
+      ($('image-format').value === 'webp' && !canWriteWebp ? ' This browser cannot write WebP: JPEG is used instead.' : '') +
+      ($('image-format').value === 'png' ? ' PNG keeps every detail but photos become several times heavier.' : '');
+  };
+
   var status = function (message, isError) {
     $('status').textContent = message;
     $('status').className = isError ? 'error' : '';
@@ -225,29 +250,128 @@
 
   var extension = function (name) { return name.slice(name.lastIndexOf('.') + 1); };
 
-  // Photos straight from a phone are large: scale them down before upload.
+  /* ---------------- image conversion ---------------- */
+
+  // Every image is converted to the chosen format and scaled to MAX_IMAGE
+  // before upload, whatever it was: JPEG, PNG, WebP, AVIF, HEIC, BMP, TIFF...
+  // SVG (a drawing, not pixels) and animated GIF are uploaded as they are.
+
+  var CONVERTIBLE = /\.(jpe?g|jfif|png|webp|gif|avif|heic|heif|bmp|tiff?)$/i;
+  var extensionType = { jpg: 'image/jpeg', jpeg: 'image/jpeg', jfif: 'image/jpeg', png: 'image/png', webp: 'image/webp' };
+
+  // Not every browser can write WebP (Safari writes a PNG instead).
+  var canWriteWebp = (function () {
+    try {
+      var probe = document.createElement('canvas');
+      probe.width = probe.height = 1;
+      return probe.toDataURL('image/webp').indexOf('data:image/webp') === 0;
+    } catch (e) { return false; }
+  })();
+  showFormat();
+
+  var chosenFormat = function () {
+    var key = $('image-format').value;
+    if (!FORMATS[key]) key = DEFAULT_FORMAT;
+    if (key === 'webp' && !canWriteWebp) key = 'jpeg';
+    return FORMATS[key];
+  };
+
+  // The browser often gives no type for .heic files: go by the name as well.
+  var isHeicFile = function (file) {
+    return /hei[cf]/i.test(file.type) || /\.hei[cf]$/i.test(file.name);
+  };
+
+  var isAnimatedGif = function (file) {
+    if (file.type !== 'image/gif' && !/\.gif$/i.test(file.name)) return Promise.resolve(false);
+    return file.arrayBuffer().then(function (buffer) {
+      var bytes = new Uint8Array(buffer);
+      var frames = 0;
+      // Each frame starts with a graphic control extension: 21 F9 04.
+      for (var i = 0; i < bytes.length - 2 && frames < 2; i++) {
+        if (bytes[i] === 0x21 && bytes[i + 1] === 0xF9 && bytes[i + 2] === 0x04) frames++;
+      }
+      return frames > 1;
+    }).catch(function () { return false; });
+  };
+
+  var heicDecoder = null;
+  var loadHeicDecoder = function () {
+    if (!heicDecoder) {
+      heicDecoder = new Promise(function (resolve, reject) {
+        var script = document.createElement('script');
+        script.src = HEIC_DECODER;
+        script.onload = function () { window.HeicTo ? resolve(window.HeicTo) : reject(new Error('HEIC decoder missing.')); };
+        script.onerror = function () { heicDecoder = null; reject(new Error('Could not load the HEIC decoder.')); };
+        document.head.appendChild(script);
+      });
+    }
+    return heicDecoder;
+  };
+
+  // The pixels of an image file: { source, width, height }.
+  var decodeImage = function (file) {
+    var asPicture = function (bitmap) { return { source: bitmap, width: bitmap.width, height: bitmap.height }; };
+    var withBitmap = function () {
+      if (!window.createImageBitmap) return Promise.reject(new Error('No createImageBitmap.'));
+      return createImageBitmap(file, { imageOrientation: 'from-image' }).then(asPicture);
+    };
+    var withElement = function () {
+      return new Promise(function (resolve, reject) {
+        var url = URL.createObjectURL(file);
+        var image = new Image();
+        image.onload = function () {
+          URL.revokeObjectURL(url);
+          image.naturalWidth ? resolve({ source: image, width: image.naturalWidth, height: image.naturalHeight })
+            : reject(new Error('Empty image.'));
+        };
+        image.onerror = function () { URL.revokeObjectURL(url); reject(new Error('Unreadable image.')); };
+        image.src = url;
+      });
+    };
+    var withHeicDecoder = function () {
+      if (!isHeicFile(file)) return Promise.reject(new Error('Unreadable image.'));
+      status('Reading ' + file.name + '…');
+      return loadHeicDecoder().then(function (heicTo) {
+        return heicTo({ blob: file, type: 'bitmap' });
+      }).then(asPicture);
+    };
+    return withBitmap().catch(withElement).catch(withHeicDecoder);
+  };
+
+  // Resolves to { name, blob } ready for upload. Rejects when the file looks
+  // like an image but this browser cannot read it.
   var prepare = function (file, name) {
     var keep = { name: name, blob: file };
-    if (!/^image\/(jpeg|png|webp|heic|heif)$/.test(file.type) || !window.createImageBitmap) {
-      return Promise.resolve(keep);
-    }
-    return createImageBitmap(file, { imageOrientation: 'from-image' }).then(function (bitmap) {
-      var longest = Math.max(bitmap.width, bitmap.height);
-      var isHeic = /hei[cf]/.test(file.type);
-      if (longest <= MAX_IMAGE && file.size <= 1500000 && !isHeic) return keep;
-      var scale = Math.min(1, MAX_IMAGE / longest);
-      var canvas = document.createElement('canvas');
-      canvas.width = Math.round(bitmap.width * scale);
-      canvas.height = Math.round(bitmap.height * scale);
-      var context = canvas.getContext('2d');
-      context.fillStyle = '#fff';
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-      return new Promise(function (resolve) { canvas.toBlob(resolve, 'image/jpeg', 0.86); })
-        .then(function (blob) {
-          return blob ? { name: name.replace(/\.[^.]+$/, '') + '.jpg', blob: blob } : keep;
-        });
-    }).catch(function () { return keep; });
+    var looksLikeImage = /^image\//.test(file.type) || CONVERTIBLE.test(file.name);
+    if (!looksLikeImage || file.type === 'image/svg+xml' || /\.svgz?$/i.test(file.name)) return Promise.resolve(keep);
+    return isAnimatedGif(file).then(function (animated) {
+      if (animated) return keep;
+      var format = chosenFormat();
+      return decodeImage(file).then(function (picture) {
+        var longest = Math.max(picture.width, picture.height);
+        var sameFormat = (file.type || extensionType[extension(name)]) === format.type;
+        if (sameFormat && longest <= MAX_IMAGE && file.size <= KEEP_BELOW) return keep;
+        var scale = Math.min(1, MAX_IMAGE / longest);
+        var canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(picture.width * scale));
+        canvas.height = Math.max(1, Math.round(picture.height * scale));
+        var context = canvas.getContext('2d');
+        if (format.type === 'image/jpeg') { // JPEG has no transparency
+          context.fillStyle = '#fff';
+          context.fillRect(0, 0, canvas.width, canvas.height);
+        }
+        context.imageSmoothingQuality = 'high';
+        context.drawImage(picture.source, 0, 0, canvas.width, canvas.height);
+        if (picture.source.close) picture.source.close();
+        return new Promise(function (resolve) { canvas.toBlob(resolve, format.type, format.quality); })
+          .then(function (blob) {
+            if (!blob || blob.type !== format.type) throw new Error('Could not write ' + format.ext + '.');
+            return { name: name.replace(/\.[^.]+$/, '') + '.' + format.ext, blob: blob };
+          });
+      }, function () {
+        throw new Error(file.name + ' could not be read as an image in this browser. Convert it to JPEG or PNG first.');
+      });
+    });
   };
 
   var parsePost = function (raw) {
@@ -563,12 +687,22 @@
     showSlug();
   });
 
+  // Emptied on each tap, so the same file can be chosen again (after changing the image format, say).
+  $('cover').addEventListener('click', function () { $('cover').value = ''; });
   $('cover').addEventListener('change', function () {
     var file = $('cover').files[0];
     if (!file) { state.cover = null; return; }
     prepare(file, 'cover.' + (extension(cleanName(file.name)) || 'jpg')).then(function (item) {
       state.cover = item;
-      $('cover-note').textContent = 'New cover: ' + Math.round(item.blob.size / 1024) + ' KB';
+      $('cover-note').textContent = 'New cover: ' + item.name + ', ' + Math.round(item.blob.size / 1024) + ' KB';
+      status('');
+      renderMedia();
+      showBackground();
+    }).catch(function (error) {
+      state.cover = null;
+      $('cover').value = '';
+      $('cover-note').textContent = '';
+      status(error.message, true);
       renderMedia();
       showBackground();
     });
@@ -589,6 +723,7 @@
   $('media').addEventListener('change', function () {
     var files = Array.prototype.slice.call($('media').files);
     var chain = Promise.resolve();
+    var failed = [];
     files.forEach(function (file) {
       chain = chain.then(function () {
         if (file.size > MAX_FILE && !/^image\//.test(file.type)) {
@@ -608,10 +743,14 @@
           for (var n = 2; taken(item.name); n++) item.name = base + '-' + n + '.' + ext;
           state.media.push(item);
           insertAtCursor('![](' + item.name + ')');
-        });
+        }).catch(function (error) { failed.push(error.message); });
       });
     });
-    chain.then(function () { $('media').value = ''; renderMedia(); });
+    chain.then(function () {
+      $('media').value = '';
+      renderMedia();
+      status(failed.join(' '), failed.length > 0);
+    });
   });
 
   /* ---------------- existing posts ---------------- */

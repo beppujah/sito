@@ -917,7 +917,15 @@ def admin_page(site, version):
 <label>Date<input id="date" type="date"></label>
 <label>Address<input id="slug" autocapitalize="off" autocomplete="off"></label>
 <p class="hint" id="slug-note"></p>
-<label>Cover image (home page)<input id="cover" type="file" accept="image/*"></label>
+</div>
+<label>Image format<select id="image-format">
+<option value="webp">WebP (lightest)</option>
+<option value="jpeg">JPEG</option>
+<option value="png">PNG (no loss, heaviest)</option>
+</select></label>
+<p class="hint" id="format-note"></p>
+<div class="not-about">
+<label>Cover image (home page)<input id="cover" type="file" accept="image/*,.heic,.heif"></label>
 <p class="hint" id="cover-note"></p>
 </div>
 </div>
@@ -939,7 +947,7 @@ def admin_page(site, version):
 <button class="button quiet" id="add-section" type="button">Add section</button>
 </div>
 <div class="post-only">
-<label>Add images, video or audio at the cursor<input id="media" type="file" multiple accept="image/*,video/*,audio/*"></label>
+<label>Add images, video or audio at the cursor<input id="media" type="file" multiple accept="image/*,.heic,.heif,video/*,audio/*"></label>
 <ul class="links" id="media-list"></ul>
 <p class="hint">bg: the image used by the Background option below (without one, the cover). banner: shown above the title. Flagged images are taken out of the text.</p>
 <label>Font<select id="font">
@@ -1131,6 +1139,7 @@ def build():
     write(OUT / "404.html", not_found_page(site, version))
     write(OUT / "admin" / "index.html", admin_page(site, version))
     shutil.copy2(SRC / "admin.js", OUT / "admin" / "admin.js")
+    shutil.copytree(SRC / "vendor", OUT / "admin" / "vendor")  # HEIC decoder, loaded on demand
 
     for post in everything:
         write(OUT / "posts" / post["slug"] / "index.html", post_page(site, post, version))

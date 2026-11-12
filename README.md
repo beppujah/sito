@@ -20,6 +20,7 @@ content/
     cover.jpg        cover photo
     ...              any other image, video or audio used in the text
 src/                 style.css, app.js, admin.js, sw.js (service worker)
+  vendor/            HEIC decoder used by the editor
 build.py             generator (builds into _site/)
 reactions.sql        optional shared backend for reactions
 .github/workflows/deploy.yml   builds and publishes on every push to main
@@ -95,8 +96,17 @@ GitHub > Settings > Developer settings > Fine-grained tokens > Generate new toke
 Repository access: only this repository, Permissions: Contents: Read and write.
 
 The token stays in that browser. Then pick "New post" (or an existing one), fill
-in title, cover and text, add media, and press Publish. Large photos are scaled
-to 2400 px before upload.
+in title, cover and text, add media, and press Publish.
+
+- **Image format** (WebP, JPEG or PNG; WebP unless changed, remembered in that
+  browser) is what every image is converted to before upload, whatever it was:
+  JPEG, PNG, WebP, AVIF, BMP, HEIC straight from a phone. The longest side is
+  scaled to 2000 px. Animated GIF and SVG are uploaded as they are; an image
+  already in the chosen format and small enough is not compressed again. Where
+  the browser cannot write WebP (Safari), JPEG is used and the editor says so.
+  HEIC photos the browser cannot read are decoded by `src/vendor/heic-to.js`
+  (heic-to, LGPL-3.0), loaded only when needed. Size, quality and default
+  (`MAX_IMAGE`, `FORMATS`, `DEFAULT_FORMAT`) are at the top of `src/admin.js`.
 
 - **Hidden (draft)** saves the post without showing it on the site. Reopen it
   from the Post list, untick the box and publish when it is ready. The same
