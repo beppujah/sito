@@ -5,6 +5,11 @@
   --ink: #111;
   --muted: #737373;     /* 4.7:1 on white: readable small text */
   --paper: #fff;
+  /* Home page (full screen, grid, index): background, and the colour of the
+     corner icons, the index text and the reactions over the photos. Both are
+     set in the editor (Site settings) and written into the home page by build.py. */
+  --home-bg: #000;
+  --home-ink: #fff;
   --font: "Helvetica Neue", Helvetica, Arial, system-ui, sans-serif;
   --text-width: 40rem;    /* width of the text column */
   --media-width: 46rem;   /* largest width of images and video in a post (big screens) */
@@ -67,8 +72,8 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
 :focus-visible { outline: 1px solid currentColor; outline-offset: 3px; }
 
 /* ---------------------------------------------------------------
-   Corner icons: always visible, plain white over the photos; on the
-   pages they take the text colour.
+   Corner icons: always visible, in the home colour (--home-ink) over
+   the photos; on the pages they take the text colour.
    --------------------------------------------------------------- */
 .corner {
   position: fixed;
@@ -78,7 +83,7 @@ button { font: inherit; color: inherit; background: none; border: 0; padding: 0;
   height: 44px;
   display: grid;
   place-items: center;
-  color: #fff;
+  color: var(--home-ink);
 }
 .corner-left { left: max(0.6rem, env(safe-area-inset-left)); }
 .corner-right { right: max(0.6rem, env(safe-area-inset-right)); }
@@ -126,8 +131,8 @@ html[data-mode="index"] .icon-expand { display: block; }
 /* ---------------------------------------------------------------
    Home: full screen feed and grid, in a column centred on big screens
    --------------------------------------------------------------- */
-html[data-mode] { scrollbar-width: none; background: #000; }
-html[data-mode] body { background: #000; color: #fff; }
+html[data-mode] { scrollbar-width: none; background: var(--home-bg); }
+html[data-mode] body { background: var(--home-bg); color: var(--home-ink); }
 html[data-mode]::-webkit-scrollbar { display: none; }
 html[data-mode="full"] { scroll-snap-type: y mandatory; }
 /* Touch screens: the script snaps to the photo itself, faster than the
@@ -145,7 +150,8 @@ html.touch-paging[data-mode="full"] { scroll-snap-type: none; }
   touch-action: manipulation; /* no double-tap zoom: taps open at once */
   -webkit-touch-callout: none;
   overflow: hidden;
-  background: #111 var(--spinner) center / 22px no-repeat;
+  /* Tile shown while the photo loads: the background, a touch towards the text colour. */
+  background: color-mix(in srgb, var(--home-ink) 7%, var(--home-bg)) var(--spinner) center / 22px no-repeat;
 }
 
 .item-link { display: block; width: 100%; height: 100%; }
@@ -170,12 +176,12 @@ html[data-mode="full"] .item-reactions {
 .item-reactions .reaction {
   width: 44px;
   padding-block: 0.2rem;
-  color: #fff;
+  color: var(--home-ink);
 }
 .item-reactions .reaction svg { width: 25px; height: 25px; }
-.item-reactions .reaction[aria-pressed="true"] { color: #fff; }
+.item-reactions .reaction[aria-pressed="true"] { color: var(--home-ink); }
 .item-reactions .reaction[aria-pressed="true"] svg { stroke-width: 2.1; }
-.item-reactions .reaction .count { min-height: 0; color: #fff; font-size: 0.68rem; }
+.item-reactions .reaction .count { min-height: 0; color: var(--home-ink); font-size: 0.68rem; }
 html[data-mode="grid"] .item-top:not(:empty) {
   position: absolute;
   right: 0.5rem;
@@ -183,7 +189,7 @@ html[data-mode="grid"] .item-top:not(:empty) {
   display: flex;
   align-items: center;
   gap: 0.2rem;
-  color: #fff;
+  color: var(--home-ink);
   font-size: 0.7rem;
   line-height: 1;
   font-variant-numeric: tabular-nums;
@@ -202,7 +208,7 @@ html[data-mode="grid"] .item-top:not(:empty) {
     bottom: 0.6rem;
     font-size: 0.75rem;
     line-height: 1.3;
-    color: #fff;
+    color: var(--home-ink);
     opacity: 0;
     transition: opacity 0.2s;
   }
@@ -225,13 +231,13 @@ html[data-mode="index"] .index {
   align-items: baseline;
   gap: 1rem;
   padding: 0.55rem 0;
-  border-bottom: 1px solid #262626;
-  color: #fff;
+  border-bottom: 1px solid color-mix(in srgb, var(--home-ink) 15%, transparent);
+  color: var(--home-ink);
   text-decoration: none;
   font-size: 0.95rem;
 }
 .index a span { flex: 1; min-width: 0; }
-.index time { flex: none; color: #9a9a9a; font-size: 0.8rem; font-variant-numeric: tabular-nums; }
+.index time { flex: none; color: color-mix(in srgb, var(--home-ink) 60%, transparent); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
 @media (hover: hover) { .index a:hover span { text-decoration: underline; text-underline-offset: 0.2em; } }
 .item img { width: 100%; height: 100%; object-fit: cover; }
 

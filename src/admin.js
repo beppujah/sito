@@ -1159,6 +1159,19 @@
   // Options shown as checkboxes: element id -> key in site.json "options".
   var OPTIONS = { 'opt-home-reactions': 'home_reactions' };
 
+  // Home colours, picked like the colours of a post: site.json "options"
+  // "home_background" and "home_text_color" ('' = black or white, from the background).
+  var HOME_BG = '#000000';
+  var sixDigits = function (value) {
+    value = String(value || '').toLowerCase();
+    if (/^#[0-9a-f]{3}$/.test(value)) value = '#' + value[1] + value[1] + value[2] + value[2] + value[3] + value[3];
+    return /^#[0-9a-f]{6}$/.test(value) ? value : '';
+  };
+  var showHomeInk = function () {
+    $('home-ink-row').hidden = $('home-ink-mode').value !== 'custom';
+  };
+  $('home-ink-mode').addEventListener('change', showHomeInk);
+
   var loadSettings = function () {
     var ref = '?ref=' + encodeURIComponent($('branch').value.trim() || 'main');
     gh('/contents/content/site.json' + ref).then(function (file) {
@@ -1167,6 +1180,12 @@
       Object.keys(OPTIONS).forEach(function (id) {
         $(id).checked = !!(site.options && site.options[OPTIONS[id]]);
       });
+      var options = site.options || {};
+      $('home-bg').value = sixDigits(options.home_background) || HOME_BG;
+      var ink = sixDigits(options.home_text_color);
+      $('home-ink-mode').value = !ink ? '' : ['#111111', '#ffffff', '#8c8c8c'].indexOf(ink) >= 0 ? ink : 'custom';
+      $('home-ink').value = ink || '#ffffff';
+      showHomeInk();
       showSection('settings');
       labelPublish();
       status('');
@@ -1185,6 +1204,8 @@
     var site = state.settings.site;
     site.options = site.options || {};
     Object.keys(OPTIONS).forEach(function (id) { site.options[OPTIONS[id]] = $(id).checked; });
+    site.options.home_background = $('home-bg').value;
+    site.options.home_text_color = $('home-ink-mode').value === 'custom' ? $('home-ink').value : $('home-ink-mode').value;
     var branch = $('branch').value.trim() || 'main';
     var head;
     $('publish').disabled = true;

@@ -503,6 +503,25 @@ def load_site():
     return site
 
 
+def expand_hex(color):
+    """#abc -> #aabbcc (the colour fields of the editor only take six digits)."""
+    if len(color) == 4:
+        return "#" + "".join(c * 2 for c in color[1:])
+    return color
+
+
+def home_colors(site):
+    """Background and text / icon colour of the home page (site.json "options":
+    "home_background", "home_text_color"). Without a text colour, black or
+    white is picked from the background, as on posts."""
+    options = site.get("options") or {}
+    background = str(options.get("home_background") or "")
+    background = expand_hex(background).lower() if HEX_COLOR.match(background) else "#000000"
+    ink = str(options.get("home_text_color") or "")
+    ink = expand_hex(ink).lower() if HEX_COLOR.match(ink) else ("#ffffff" if is_dark(background) else "#111111")
+    return background, ink
+
+
 def page_looks(folder, meta, cover=""):
     """Background, banner, text colour and font of a post or of the about page."""
     # background / banner: a file of the folder, or "true" for the cover.
@@ -755,6 +774,9 @@ def home_page(site, posts, version):
 </nav>"""
     head = ('<script>document.documentElement.dataset.mode='
             '{"#grid":"grid","#index":"index"}[location.hash]||"full"</script>\n')
+    background, ink = home_colors(site)
+    if (background, ink) != ("#000000", "#ffffff"):  # the defaults are in style.css
+        head += f"<style>:root{{--home-bg:{background};--home-ink:{ink}}}</style>\n"
     image = f'posts/{quote(posts[0]["slug"])}/{quote(posts[0]["cover"])}' if posts else ""
     foot = reactions_config(site) if with_reactions else ""
     return page(site, title="", description=site["description"], root="", body=body,
@@ -940,6 +962,16 @@ def admin_page(site, version):
 </div>
 <div class="settings-only" hidden>
 <label class="check"><input id="opt-home-reactions" type="checkbox">Reactions on the home page: all of them on the right of each photo in full screen, the most chosen one on each photo in the grid</label>
+<label>Home background colour<input id="home-bg" type="color" value="#000000"></label>
+<label>Home text and icon colour<select id="home-ink-mode">
+<option value="">Automatic</option>
+<option value="#111111">Black</option>
+<option value="#ffffff">White</option>
+<option value="#8c8c8c">Grey</option>
+<option value="custom">Custom</option>
+</select></label>
+<label id="home-ink-row" hidden>Custom text and icon colour<input id="home-ink" type="color" value="#ffffff"></label>
+<p class="hint">Home page only (full screen, grid and index): the background, and the colour of the corner icons, the index text and the reactions over the photos. Automatic picks black or white from the background. Posts and the about page keep their own colours.</p>
 </div>
 <div class="about-only" hidden>
 <p class="hint">Sections shown under the text, each with its own title (Contact, for example). The text is written like the text above: plain words, [link text](https://…), **bold**, "- " for a list.</p>
@@ -1081,8 +1113,8 @@ def make_manifest(site):
         "start_url": "./",
         "scope": "./",
         "display": "standalone",
-        "background_color": "#000000",
-        "theme_color": "#000000",
+        "background_color": home_colors(site)[0],
+        "theme_color": home_colors(site)[0],
         "icons": [],
     }
     if site.get("_favicon"):

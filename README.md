@@ -131,6 +131,11 @@ in title, cover and text, add media, and press Publish.
   home page photos (all of them on the right in full screen, the most chosen one
   in the grid). For one request instead of one per post, run the
   `reaction_summary` part of `reactions.sql` in Supabase.
+  `home_background` and `home_text_color`: the colours of the home page (full
+  screen, grid and index), picked like the colours of a post. The first is the
+  background (black unless changed); the second is the colour of the corner
+  icons, the index text and the reactions over the photos (Automatic: black or
+  white, from the background). Posts and the about page keep their own colours.
 - The **x** next to a media file takes it out of the post and out of the text;
   files already published are deleted when you press Publish.
 - **Delete post** (two taps) removes the post folder. Earlier versions remain
