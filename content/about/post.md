@@ -7,7 +7,7 @@ text-color: #ffcc02
 
 I am Giuseppe Zamboni, DIY enthusiast, artistic thinker and techical recycler from Italy, based in Czechia. 
 
-This website is an attempt to make a record of my work in a safe and comfortable environment, but also a place to post some randomness.
+This website is an attempt to make a record of my work in a free and comfortable environment, but also a place to post some randomness.
 
 The app that runs the site is made with Claude LLM and it’s code is avaliable at the  github repository [github.com/beppujah/sito](https://github.com/beppujah/sito)
 

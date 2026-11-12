@@ -6,8 +6,13 @@
   "branch": "main",
   "sections": [
     {
-      "title": "Contact",
-      "text": "- [Insectarium](https://beppujah.github.io/insectarium/)\n- Email: beppujah [at] gmail [dot] com\n- [YouTube](https://www.youtube.com/@beppujah)\n- [GitHub](https://github.com/beppujah)",
+      "title": "Links",
+      "text": "- [Insectarium](https://beppujah.github.io/insectarium/)\n- [Moon-mood](https://beppujah.github.io/moon-tracker/)",
+      "title_it": "Links"
+    },
+    {
+      "title": "Contacts",
+      "text": "- Email: beppujah [at] gmail [dot] com\n- [Instagram](https://www.instagram.com/beppe_zamboni/)\n- [YouTube](https://www.youtube.com/@beppujah)\n- [GitHub](https://github.com/beppujah)",
       "title_it": "Contatti"
     }
   ],
