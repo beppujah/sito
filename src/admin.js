@@ -819,7 +819,7 @@
   var showSection = function (name) {
     // The about page uses the post form too, without cover, date, address,
     // hidden and pinned, and with the sections under the text (Contact, ...).
-    ['post', 'about', 'settings', 'bulk'].forEach(function (section) {
+    ['post', 'about', 'settings', 'bulk', 'stats'].forEach(function (section) {
       Array.prototype.forEach.call(document.querySelectorAll('.' + section + '-only'), function (el) {
         el.hidden = !(section === name || (section === 'post' && name === 'about'));
       });
@@ -828,9 +828,9 @@
       el.hidden = name === 'about';
     });
     Array.prototype.forEach.call(document.querySelectorAll('.text-block'), function (el) {
-      el.hidden = name === 'settings' || name === 'bulk';
+      el.hidden = name === 'settings' || name === 'bulk' || name === 'stats';
     });
-    $('publish').parentNode.hidden = name === 'bulk';
+    $('publish').parentNode.hidden = name === 'bulk' || name === 'stats';
     if (name !== 'post') $('delete').hidden = true;
   };
   var showAbout = function (on) { showSection(on ? 'about' : 'post'); };
@@ -877,7 +877,7 @@
   // Rebuild the "Post" list from state.posts.
   var listPosts = function () {
     var select = $('post');
-    while (select.options.length > 4) select.remove(4); // keep the first four entries
+    while (select.options.length > 5) select.remove(5); // keep the first five entries
     state.posts.forEach(function (post) {
       var option = document.createElement('option');
       option.value = post.slug;
@@ -1015,6 +1015,121 @@
     });
   });
 
+  /* ---------------- reactions and views ---------------- */
+
+  // Read from the same backend as the reactions (see reactions.sql).
+  var backend = config.backend || {};
+  var rpc = function (name, body) {
+    if (!backend.url || !backend.key) return Promise.reject(new Error('No reactions backend in content/site.json.'));
+    return fetch(backend.url + '/rest/v1/rpc/' + name, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: backend.key, Authorization: 'Bearer ' + backend.key },
+      body: JSON.stringify(body || {})
+    }).then(function (response) {
+      if (response.status === 404) {
+        throw new Error('The backend is missing "' + name + '": run reactions.sql again in the Supabase SQL editor.');
+      }
+      if (!response.ok) throw new Error('Backend: ' + response.status);
+      return response.json();
+    });
+  };
+
+  var pageTitle = function (name) {
+    if (name === '@home') return 'Home';
+    if (name === '@about') return 'About';
+    var post = state.posts.filter(function (post) { return post.slug === name; })[0];
+    return post ? post.title : name;
+  };
+
+  // rows of { post, kind, count } -> { post: 'sun 2 · leaf 1' }
+  var reactionText = function (rows) {
+    var text = {};
+    (rows || []).forEach(function (row) {
+      text[row.post] = (text[row.post] ? text[row.post] + ' \u00b7 ' : '') + row.kind + ' ' + row.count;
+    });
+    return text;
+  };
+
+  // New reactions since they were last marked as seen in this browser.
+  var news = null; // { since, rows } once the backend has answered
+  var showNews = function () {
+    if (!news) return;
+    var when = new Date(news.since).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    var text = reactionText(news.rows);
+    var posts = Object.keys(text);
+    $('news-text').textContent = posts.length
+      ? 'New reactions since ' + when + ': ' + posts.map(function (post) { return pageTitle(post) + ' (' + text[post] + ')'; }).join(', ') + '.'
+      : 'No new reactions since ' + when + '.';
+    $('news-seen').hidden = !posts.length;
+    $('news').hidden = false;
+  };
+  var markSeen = function () {
+    var now = new Date().toISOString();
+    try { localStorage.setItem('admin-reactions-seen', now); } catch (e) {}
+    return now;
+  };
+  var checkNews = function () {
+    if (!backend.url || !backend.key) return;
+    var since = stored('reactions-seen', '');
+    if (!since) { // first time here: start counting from now
+      news = { since: markSeen(), rows: [] };
+      return showNews();
+    }
+    rpc('reactions_since', { p_since: since }).then(function (rows) {
+      news = { since: since, rows: rows };
+      showNews();
+    }).catch(function (error) {
+      $('news-text').textContent = error.message;
+      $('news-seen').hidden = true;
+      $('news').hidden = false;
+    });
+  };
+  $('news-seen').addEventListener('click', function () {
+    news = { since: markSeen(), rows: [] };
+    showNews();
+  });
+  checkNews();
+
+  // Views of each page (today, last 7 days, ever) and its reactions.
+  var loadStats = function () {
+    showSection('stats');
+    var body = $('stats').tBodies[0];
+    body.textContent = '';
+    Promise.all([
+      rpc('view_counts'),
+      rpc('reaction_summary').catch(function () { return []; })
+    ]).then(function (found) {
+      var views = {};
+      found[0].forEach(function (row) { views[row.page] = row; });
+      var reactions = reactionText(found[1]);
+      var names = ['@home', '@about'].concat(state.posts.map(function (post) { return post.slug; }));
+      Object.keys(views).concat(Object.keys(reactions)).forEach(function (name) { // pages no longer on the site
+        if (names.indexOf(name) < 0) names.push(name);
+      });
+      var sum = { today: 0, week: 0, total: 0 };
+      var addRow = function (title, row, note) {
+        var line = body.insertRow();
+        var head = document.createElement('th');
+        head.scope = 'row';
+        head.textContent = title;
+        if (note) {
+          var small = document.createElement('small');
+          small.textContent = note;
+          head.appendChild(small);
+        }
+        line.appendChild(head);
+        ['today', 'week', 'total'].forEach(function (key) { line.insertCell().textContent = row[key] || 0; });
+      };
+      names.forEach(function (name) {
+        var row = views[name] || {};
+        ['today', 'week', 'total'].forEach(function (key) { sum[key] += Number(row[key] || 0); });
+        addRow(pageTitle(name), row, reactions[name]);
+      });
+      addRow('All pages', sum);
+      status('');
+    }).catch(function (error) { status(error.message, true); });
+  };
+
   /* ---------------- existing posts ---------------- */
 
   fetch('../posts.json', { cache: 'no-store' })
@@ -1023,6 +1138,7 @@
     .then(function (posts) {
       state.posts = posts;
       listPosts();
+      showNews(); // with the titles of the posts
     });
 
   $('post').addEventListener('change', function () {
@@ -1033,6 +1149,7 @@
     if (slug === '@about') return loadEntry('about', 'content/about');
     if (slug === '@settings') return loadSettings();
     if (slug === '@bulk') return loadBulk();
+    if (slug === '@stats') return loadStats();
     loadEntry(slug, 'content/posts/' + slug);
   });
 

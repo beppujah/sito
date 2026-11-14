@@ -511,6 +511,15 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; 
 .lang-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
 .admin summary { cursor: pointer; }
 .hint { margin: 0.4rem 0 0; font-size: 0.8rem; color: var(--muted); }
+#news { display: flex; align-items: baseline; gap: 0.6rem; margin-bottom: 0.5rem; }
+#news .hint { margin: 0; }
+#news .flag { flex: none; padding: 0.2rem 0.6rem; font-size: 0.75rem; color: var(--muted); box-shadow: inset 0 0 0 1px #d4d4d4; }
+#stats { width: 100%; margin-top: 1.4rem; border-collapse: collapse; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+#stats th, #stats td { padding: 0.5rem 0 0.5rem 0.8rem; border-bottom: 1px solid #eee; text-align: right; font-weight: normal; vertical-align: top; }
+#stats th:first-child { padding-left: 0; text-align: left; }
+#stats thead th { font-size: 0.75rem; color: var(--muted); white-space: nowrap; }
+#stats small { display: block; margin-top: 0.15rem; font-size: 0.75rem; color: var(--muted); }
+#stats tbody tr:last-child th, #stats tbody tr:last-child td { border-bottom: 0; color: var(--muted); }
 /* Crop: shown over the editor when an image is chosen. */
 .cropping { overflow: hidden; }
 .crop {

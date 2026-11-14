@@ -684,7 +684,10 @@ def load_posts():
 # --------------------------------------------------------------------------
 
 def page(site, *, title, description, root, body, body_class, version, path="", image="", head="", foot="",
-         body_style="", robots="", lang="en", base=""):
+         body_style="", robots="", lang="en", base="", view=""):
+    # view: the name this page is counted under (see "Views" in app.js); "" for none.
+    if view and "SITE_REACTIONS" not in foot:
+        foot = reactions_config(site) + foot
     full_title = site["title"] if not title else f"{title} — {site['title']}"
     meta = [f'<meta property="og:title" content="{esc(title or site["title"])}">']
     if description:
@@ -721,7 +724,7 @@ def page(site, *, title, description, root, body, body_class, version, path="", 
 {chr(10).join(meta)}
 <link rel="stylesheet" href="{root}assets/style.css?v={version}">
 {head}</head>
-<body class="{body_class}"{f' style="{body_style}"' if body_style else ""}>
+<body class="{body_class}"{f' style="{body_style}"' if body_style else ""}{f' data-view="{esc(view)}"' if view else ""}>
 {body}
 {foot}<script src="{root}assets/app.js?v={version}"></script>
 </body>
@@ -780,7 +783,7 @@ def home_page(site, posts, version):
     image = f'posts/{quote(posts[0]["slug"])}/{quote(posts[0]["cover"])}' if posts else ""
     foot = reactions_config(site) if with_reactions else ""
     return page(site, title="", description=site["description"], root="", body=body,
-                body_class="home", version=version, image=image, head=head, foot=foot)
+                body_class="home", version=version, image=image, head=head, foot=foot, view="@home")
 
 
 def reactions_config(site):
@@ -863,7 +866,8 @@ def post_page(site, post, version, lang="en"):
                 body=body, body_class=body_class, version=version,
                 path=f"posts/{slug}/" + ("it/" if lang == "it" else ""),
                 image=f"posts/{slug}/{cover}", head=head, foot=foot, body_style=";".join(style),
-                robots="noindex" if post["hidden"] else "", lang=lang, base="../" if lang == "it" else "")
+                robots="noindex" if post["hidden"] else "", lang=lang, base="../" if lang == "it" else "",
+                view=post["slug"])
 
 
 def about_page(site, about, version, lang="en"):
@@ -895,7 +899,8 @@ def about_page(site, about, version, lang="en"):
 </main>"""
     return page(site, title=title, description=site["description"], root="../", body=body,
                 body_class=body_class, version=version, path="about/" + ("it/" if lang == "it" else ""),
-                head=head, body_style=";".join(style), lang=lang, base="../" if lang == "it" else "")
+                head=head, body_style=";".join(style), lang=lang, base="../" if lang == "it" else "",
+                view="@about")
 
 
 def not_found_page(site, version):
@@ -905,7 +910,10 @@ def not_found_page(site, version):
 
 
 def admin_page(site, version):
-    config = json.dumps({"repo": site.get("repo", ""), "branch": site.get("branch", "main")})
+    backend = site.get("reactions") or {}
+    config = json.dumps({"repo": site.get("repo", ""), "branch": site.get("branch", "main"),
+                         "backend": {"url": backend.get("supabase_url", "").rstrip("/"),
+                                     "key": backend.get("supabase_anon_key", "")}})
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -920,6 +928,7 @@ def admin_page(site, version):
 <a class="corner corner-left" href="../" aria-label="Back to the site">{ICONS["back"]}</a>
 <main class="prose">
 <h1>Editor</h1>
+<div id="news" hidden><p class="hint" id="news-text"></p><button class="flag" id="news-seen" type="button" hidden>Mark as seen</button></div>
 <details id="settings">
 <summary>Connection</summary>
 <label>Repository<input id="repo" placeholder="owner/name" autocapitalize="off" autocomplete="off"></label>
@@ -927,7 +936,7 @@ def admin_page(site, version):
 <label>Access token<input id="token" type="password" autocomplete="off"></label>
 <p class="hint">A fine-grained GitHub token limited to this repository, with read and write access to Contents. It is kept in this browser only and sent only to api.github.com.</p>
 </details>
-<label>Post<select id="post"><option value="">New post</option><option value="@about">About page</option><option value="@settings">Site settings</option><option value="@bulk">All posts: hide, show, delete</option></select></label>
+<label>Post<select id="post"><option value="">New post</option><option value="@about">About page</option><option value="@settings">Site settings</option><option value="@bulk">All posts: hide, show, delete</option><option value="@stats">Statistics: views and reactions</option></select></label>
 <div class="post-only">
 <div class="lang-tabs" role="tablist" aria-label="Language of title and text">
 <button type="button" role="tab" id="tab-en" aria-selected="true">English</button>
@@ -972,6 +981,10 @@ def admin_page(site, version):
 </select></label>
 <label id="home-ink-row" hidden>Custom text and icon colour<input id="home-ink" type="color" value="#ffffff"></label>
 <p class="hint">Home page only (full screen, grid and index): the background, and the colour of the corner icons, the index text and the reactions over the photos. Automatic picks black or white from the background. Posts and the about page keep their own colours.</p>
+</div>
+<div class="stats-only" hidden>
+<table id="stats"><thead><tr><th scope="col">Page</th><th scope="col">Today</th><th scope="col">7 days</th><th scope="col">Total</th></tr></thead><tbody></tbody></table>
+<p class="hint">Views: a page is counted once a day per browser, and never from a browser where this editor is connected. Days follow UTC. Under each page, its reactions.</p>
 </div>
 <div class="about-only" hidden>
 <p class="hint">Sections shown under the text, each with its own title (Contact, for example). The text is written like the text above: plain words, [link text](https://…), **bold**, "- " for a list.</p>

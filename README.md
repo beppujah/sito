@@ -22,7 +22,7 @@ content/
 src/                 style.css, app.js, admin.js, sw.js (service worker)
   vendor/            HEIC decoder and video converter used by the editor
 build.py             generator (builds into _site/)
-reactions.sql        optional shared backend for reactions
+reactions.sql        optional shared backend for reactions and views
 .github/workflows/deploy.yml   builds and publishes on every push to main
 ```
 
@@ -181,6 +181,22 @@ share totals between visitors, create a free Supabase project, run
 `reactions.sql` in its SQL editor, and put the project URL and anon key in
 `content/site.json` under `reactions`. To change the set of reactions, edit
 `REACTIONS` and `ICONS` in `build.py` and the list in `reactions.sql`.
+
+## Views and new reactions
+
+With the Supabase backend in place, run `reactions.sql` again after an update:
+it also creates what follows (the whole file can be run any number of times).
+
+- **Views**: each page (home, about, every post) is counted once a day per
+  browser. Only a number per page per day is stored: no cookie, no visitor id,
+  no address, no third-party service. A browser where the editor is connected
+  is not counted. **Statistics** in the editor's Post list shows the views of
+  each page (today, last 7 days, total) and its reactions.
+- **New reactions**: the top of the editor lists the reactions set since they
+  were last marked as seen in that browser ("Mark as seen").
+
+The counts can be read by anyone who calls the backend with the key published
+in `content/site.json`, like the reaction totals.
 
 ## Tweaking the look
 

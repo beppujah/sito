@@ -1,6 +1,7 @@
--- Optional shared backend for post reactions (Supabase / Postgres).
--- Run once in the Supabase SQL editor, then put the project URL and the
--- anon (publishable) key in content/site.json under "reactions".
+-- Optional shared backend for post reactions and page views (Supabase /
+-- Postgres). Run in the Supabase SQL editor, then put the project URL and the
+-- anon (publishable) key in content/site.json under "reactions". The whole
+-- file can be run again at any time (after an update, for the new parts).
 --
 -- One row per (post, visitor): a visitor can hold a single reaction per post.
 -- The visitor is a random id generated in the browser; no personal data.
@@ -66,3 +67,63 @@ $$;
 
 revoke all on function public.reaction_summary() from public;
 grant execute on function public.reaction_summary() to anon;
+
+-- Reactions set or changed after a moment in time, for the "new reactions"
+-- note in the editor.
+create or replace function public.reactions_since(p_since timestamptz)
+returns table (post text, kind text, count bigint)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select r.post, r.kind, count(*) from public.reactions r
+  where r.updated_at > p_since group by r.post, r.kind;
+$$;
+
+revoke all on function public.reactions_since(timestamptz) from public;
+grant execute on function public.reactions_since(timestamptz) to anon;
+
+-- Page views: one number per page per day (UTC). Nothing about the visitor
+-- is stored: no id, no address, no browser. "page" is the post's folder
+-- name, "@home" or "@about". Like reactions, the table is reachable only
+-- through the functions below.
+create table if not exists public.views (
+  page  text    not null check (page ~ '^@?[a-z0-9][a-z0-9_-]{0,119}$'),
+  day   date    not null default (now() at time zone 'utc')::date,
+  count integer not null default 0,
+  primary key (page, day)
+);
+
+alter table public.views enable row level security;
+
+-- Count one view of a page, today.
+create or replace function public.view(p_page text)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  insert into public.views (page, count) values (p_page, 1)
+  on conflict (page, day) do update set count = public.views.count + 1;
+$$;
+
+-- Views per page: today, the last 7 days, ever. Shown in the editor.
+create or replace function public.view_counts()
+returns table (page text, today bigint, week bigint, total bigint)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select v.page,
+    coalesce(sum(v.count) filter (where v.day = (now() at time zone 'utc')::date), 0)::bigint,
+    coalesce(sum(v.count) filter (where v.day > (now() at time zone 'utc')::date - 7), 0)::bigint,
+    sum(v.count)::bigint
+  from public.views v group by v.page;
+$$;
+
+revoke all on function public.view(text) from public;
+revoke all on function public.view_counts() from public;
+grant execute on function public.view(text) to anon;
+grant execute on function public.view_counts() to anon;

@@ -354,6 +354,34 @@
   }
 
   /* ------------------------------------------------------------------
+     Views: each page is counted once a day per browser, in the same
+     backend as the reactions (see reactions.sql). Only the count is kept:
+     nothing about the visitor is sent or stored. The browser where the
+     editor is connected is not counted.
+     ------------------------------------------------------------------ */
+  (function () {
+    var name = document.body.getAttribute('data-view');
+    var backend = window.SITE_REACTIONS || {};
+    if (!name || !backend.url || !backend.key || navigator.webdriver) return;
+    try {
+      if (localStorage.getItem('admin-token')) return;
+      var seen = JSON.parse(localStorage.getItem('views') || '{}');
+      var day = new Date().toISOString().slice(0, 10);
+      if (seen[name] === day) return;
+      fetch(backend.url + '/rest/v1/rpc/view', {
+        method: 'POST',
+        keepalive: true,
+        headers: { 'Content-Type': 'application/json', apikey: backend.key, Authorization: 'Bearer ' + backend.key },
+        body: JSON.stringify({ p_page: name })
+      }).then(function (response) {
+        if (!response.ok) return;
+        seen[name] = day;
+        try { localStorage.setItem('views', JSON.stringify(seen)); } catch (e) {}
+      }).catch(function () {});
+    } catch (e) {}
+  })();
+
+  /* ------------------------------------------------------------------
      Reactions: one per visitor per post, anonymous.
      The visitor is a random id kept in this browser. Without a backend
      (see reactions.sql) the choice is only remembered on this device.
