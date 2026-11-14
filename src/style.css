@@ -511,6 +511,46 @@ code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9em; 
 .lang-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--ink); }
 .admin summary { cursor: pointer; }
 .hint { margin: 0.4rem 0 0; font-size: 0.8rem; color: var(--muted); }
+/* Crop: shown over the editor when an image is chosen. */
+.cropping { overflow: hidden; }
+.crop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+  padding: max(1rem, env(safe-area-inset-top)) 1rem max(1rem, env(safe-area-inset-bottom));
+  background: var(--paper);
+  color: var(--ink);
+}
+.crop-title { margin: 0; font-size: 0.8rem; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crop-stage { flex: 1; min-height: 0; display: grid; place-items: center; }
+.crop-frame { position: relative; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none; }
+.crop-frame canvas { display: block; width: 100%; height: 100%; }
+.crop-area {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid #fff;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
+  cursor: move;
+  touch-action: none;
+}
+/* Corner handles: a thin mark, with a finger-sized area around it. */
+.crop-handle { position: absolute; width: 44px; height: 44px; }
+.crop-handle::after { content: ""; position: absolute; width: 14px; height: 14px; border: 0 solid #fff; }
+.crop-handle.nw { left: -22px; top: -22px; cursor: nwse-resize; }
+.crop-handle.ne { right: -22px; top: -22px; cursor: nesw-resize; }
+.crop-handle.sw { left: -22px; bottom: -22px; cursor: nesw-resize; }
+.crop-handle.se { right: -22px; bottom: -22px; cursor: nwse-resize; }
+.crop-handle.nw::after { left: 20px; top: 20px; border-left-width: 3px; border-top-width: 3px; }
+.crop-handle.ne::after { right: 20px; top: 20px; border-right-width: 3px; border-top-width: 3px; }
+.crop-handle.sw::after { left: 20px; bottom: 20px; border-left-width: 3px; border-bottom-width: 3px; }
+.crop-handle.se::after { right: 20px; bottom: 20px; border-right-width: 3px; border-bottom-width: 3px; }
+.crop-shapes { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.crop-shapes .flag { padding: 0.3rem 0.7rem; font-size: 0.75rem; color: var(--muted); box-shadow: inset 0 0 0 1px #d4d4d4; }
+.crop-shapes .flag[aria-pressed="true"] { background: var(--ink); color: var(--paper); box-shadow: none; }
+.crop-buttons { display: flex; flex-wrap: wrap; gap: 0.75rem; }
 #media-list { margin-top: 0.6rem; font-size: 0.85rem; }
 #media-list li { display: flex; align-items: center; gap: 0.5rem; margin: 0; }
 #media-list .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

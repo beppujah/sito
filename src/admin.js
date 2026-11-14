@@ -17,7 +17,17 @@
   // this many bytes is uploaded as it is, not compressed a second time.
   var KEEP_BELOW = 1500000;
   var HEIC_DECODER = 'vendor/heic-to.js'; // loaded only when the browser cannot read a HEIC photo
-  var MAX_FILE = 25 * 1024 * 1024; // per-file limit for video and audio
+  var MAX_FILE = 25 * 1024 * 1024; // per-file limit for video and audio, after conversion
+  // Every video is converted to MP4 (H.264 + AAC) before upload, scaled to
+  // MAX_VIDEO on its longest side. A longer video needs a lower VIDEO_BITRATE
+  // to stay under MAX_FILE: 2.5 Mbit/s is about 75 seconds.
+  var MAX_VIDEO = 1280;            // longest side, in pixels
+  var VIDEO_BITRATE = 2500000;     // picture, bits per second
+  var AUDIO_BITRATE = 160000;      // sound, bits per second (only when it has to be re-encoded)
+  var VIDEO_FPS = 30;              // faster videos are slowed to this many frames per second
+  var VIDEO_CONVERTER = 'vendor/mediabunny.min.mjs'; // loaded only when a video is chosen
+  // Shapes offered when cropping an image (width / height). 0: any shape.
+  var CROP_SHAPES = [['Free', 0], ['1:1', 1], ['4:5', 4 / 5], ['3:2', 3 / 2], ['16:9', 16 / 9], ['9:16', 9 / 16]];
 
   var config = window.SITE_CONFIG || {};
   var $ = function (id) { return document.getElementById(id); };
@@ -348,30 +358,262 @@
       if (animated) return keep;
       var format = chosenFormat();
       return decodeImage(file).then(function (picture) {
-        var longest = Math.max(picture.width, picture.height);
+        return askCrop(picture, file.name).then(function (crop) { return { picture: picture, crop: crop }; });
+      }, function () {
+        throw new Error(file.name + ' could not be read as an image in this browser. Convert it to JPEG or PNG first.');
+      }).then(function (chosen) {
+        var picture = chosen.picture;
+        var crop = chosen.crop || { x: 0, y: 0, width: picture.width, height: picture.height };
+        var longest = Math.max(crop.width, crop.height);
         var sameFormat = (file.type || extensionType[extension(name)]) === format.type;
-        if (sameFormat && longest <= MAX_IMAGE && file.size <= KEEP_BELOW) return keep;
+        if (!chosen.crop && sameFormat && longest <= MAX_IMAGE && file.size <= KEEP_BELOW) return keep;
         var scale = Math.min(1, MAX_IMAGE / longest);
         var canvas = document.createElement('canvas');
-        canvas.width = Math.max(1, Math.round(picture.width * scale));
-        canvas.height = Math.max(1, Math.round(picture.height * scale));
+        canvas.width = Math.max(1, Math.round(crop.width * scale));
+        canvas.height = Math.max(1, Math.round(crop.height * scale));
         var context = canvas.getContext('2d');
         if (format.type === 'image/jpeg') { // JPEG has no transparency
           context.fillStyle = '#fff';
           context.fillRect(0, 0, canvas.width, canvas.height);
         }
         context.imageSmoothingQuality = 'high';
-        context.drawImage(picture.source, 0, 0, canvas.width, canvas.height);
+        context.drawImage(picture.source, crop.x, crop.y, crop.width, crop.height, 0, 0, canvas.width, canvas.height);
         if (picture.source.close) picture.source.close();
         return new Promise(function (resolve) { canvas.toBlob(resolve, format.type, format.quality); })
           .then(function (blob) {
             if (!blob || blob.type !== format.type) throw new Error('Could not write ' + format.ext + '.');
             return { name: name.replace(/\.[^.]+$/, '') + '.' + format.ext, blob: blob };
           });
-      }, function () {
-        throw new Error(file.name + ' could not be read as an image in this browser. Convert it to JPEG or PNG first.');
       });
     });
+  };
+
+  /* ---------------- image crop ---------------- */
+
+  // Shown for each image as it is chosen. Resolves to the part to keep, in
+  // the pixels of the image ({ x, y, width, height }), or null for all of it.
+  var cropAll = false; // "Whole image for all": no more questions for this batch
+  var cropLeft = 0;    // files of this batch still to come after the one shown
+
+  var askCrop = function (picture, label) {
+    if (cropAll) return Promise.resolve(null);
+    return new Promise(function (resolve) {
+      var make = function (tag, className, text) {
+        var node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text) node.textContent = text;
+        if (tag === 'button') node.type = 'button';
+        return node;
+      };
+      var box = make('div', 'crop');
+      box.setAttribute('role', 'dialog');
+      box.setAttribute('aria-modal', 'true');
+      box.setAttribute('aria-label', 'Crop ' + label);
+      var title = make('p', 'crop-title', label);
+      var stage = make('div', 'crop-stage');
+      var frame = make('div', 'crop-frame');
+      var canvas = make('canvas');
+      var area = make('div', 'crop-area');
+      ['nw', 'ne', 'sw', 'se'].forEach(function (corner) {
+        var handle = make('span', 'crop-handle ' + corner);
+        handle.setAttribute('data-corner', corner);
+        area.appendChild(handle);
+      });
+      frame.appendChild(canvas);
+      frame.appendChild(area);
+      stage.appendChild(frame);
+      var shapes = make('div', 'crop-shapes');
+      var buttons = make('div', 'crop-buttons');
+      var whole = make('button', 'button quiet', 'Whole image');
+      var all = make('button', 'button quiet', 'Whole image for all');
+      var done = make('button', 'button', 'Crop');
+      buttons.appendChild(whole);
+      if (cropLeft > 0) buttons.appendChild(all);
+      buttons.appendChild(done);
+      [title, stage, shapes, buttons].forEach(function (node) { box.appendChild(node); });
+      document.body.appendChild(box);
+      document.documentElement.classList.add('cropping');
+
+      // The picture is shown as large as the space allows; rect is in those pixels.
+      var room = stage.getBoundingClientRect();
+      var fit = Math.min(room.width / picture.width, room.height / picture.height);
+      var W = Math.max(1, Math.round(picture.width * fit));
+      var H = Math.max(1, Math.round(picture.height * fit));
+      var density = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(W * density);
+      canvas.height = Math.round(H * density);
+      frame.style.width = W + 'px';
+      frame.style.height = H + 'px';
+      canvas.getContext('2d').drawImage(picture.source, 0, 0, canvas.width, canvas.height);
+
+      var MIN = Math.min(40, W, H);
+      var rect = { x: 0, y: 0, w: W, h: H };
+      var ratio = 0;
+      var draw = function () {
+        area.style.left = rect.x + 'px';
+        area.style.top = rect.y + 'px';
+        area.style.width = rect.w + 'px';
+        area.style.height = rect.h + 'px';
+      };
+      // The largest area of that shape, in the middle of the picture.
+      var setShape = function (value) {
+        ratio = value;
+        if (ratio) {
+          var w = Math.min(W, H * ratio);
+          rect = { x: (W - w) / 2, y: (H - w / ratio) / 2, w: w, h: w / ratio };
+        }
+        Array.prototype.forEach.call(shapes.children, function (button) {
+          button.setAttribute('aria-pressed', Number(button.getAttribute('data-ratio')) === ratio ? 'true' : 'false');
+        });
+        draw();
+      };
+      CROP_SHAPES.forEach(function (shape) {
+        var button = make('button', 'flag', shape[0]);
+        button.setAttribute('data-ratio', shape[1]);
+        button.addEventListener('click', function () { setShape(shape[1]); });
+        shapes.appendChild(button);
+      });
+      setShape(0);
+
+      var drag = null;
+      area.addEventListener('pointerdown', function (event) {
+        var corner = event.target.getAttribute('data-corner');
+        drag = { x: event.clientX, y: event.clientY, start: { x: rect.x, y: rect.y, w: rect.w, h: rect.h }, corner: corner };
+        area.setPointerCapture(event.pointerId);
+        event.preventDefault();
+      });
+      area.addEventListener('pointermove', function (event) {
+        if (!drag) return;
+        var dx = event.clientX - drag.x;
+        var dy = event.clientY - drag.y;
+        var from = drag.start;
+        if (!drag.corner) { // move the whole area
+          rect.x = Math.min(Math.max(0, from.x + dx), W - from.w);
+          rect.y = Math.min(Math.max(0, from.y + dy), H - from.h);
+          return draw();
+        }
+        // The opposite corner stays where it is.
+        var left = drag.corner.charAt(1) === 'w';
+        var top = drag.corner.charAt(0) === 'n';
+        var anchorX = left ? from.x + from.w : from.x;
+        var anchorY = top ? from.y + from.h : from.y;
+        var maxW = left ? anchorX : W - anchorX;
+        var maxH = top ? anchorY : H - anchorY;
+        var w = Math.min(Math.max(MIN, left ? from.w - dx : from.w + dx), maxW);
+        var h = Math.min(Math.max(MIN, top ? from.h - dy : from.h + dy), maxH);
+        if (ratio) {
+          h = w / ratio;
+          if (h > maxH) { h = maxH; w = h * ratio; }
+          if (h < MIN && MIN * ratio <= maxW) { h = MIN; w = h * ratio; }
+        }
+        rect = { x: left ? anchorX - w : anchorX, y: top ? anchorY - h : anchorY, w: w, h: h };
+        draw();
+      });
+      var release = function () { drag = null; };
+      area.addEventListener('pointerup', release);
+      area.addEventListener('pointercancel', release);
+
+      var close = function (result) {
+        document.removeEventListener('keydown', onKey);
+        document.documentElement.classList.remove('cropping');
+        box.remove();
+        resolve(result);
+      };
+      var onKey = function (event) { if (event.key === 'Escape') close(null); };
+      document.addEventListener('keydown', onKey);
+      whole.addEventListener('click', function () { close(null); });
+      all.addEventListener('click', function () { cropAll = true; close(null); });
+      done.addEventListener('click', function () {
+        if (rect.w >= W - 1 && rect.h >= H - 1) return close(null);
+        var x = Math.round(rect.x / fit);
+        var y = Math.round(rect.y / fit);
+        close({
+          x: x, y: y,
+          width: Math.max(1, Math.min(picture.width - x, Math.round(rect.w / fit))),
+          height: Math.max(1, Math.min(picture.height - y, Math.round(rect.h / fit)))
+        });
+      });
+      done.focus();
+    });
+  };
+
+  /* ---------------- video conversion ---------------- */
+
+  // Every video becomes an MP4 any browser plays (H.264 + AAC), no larger
+  // than MAX_VIDEO: a .mov straight from a phone included. A video that is
+  // already like that is uploaded as it is. Where the browser cannot convert
+  // (no WebCodecs), the file is uploaded untouched and the deploy converts it.
+
+  var looksLikeVideo = function (file) {
+    return /^video\//.test(file.type) || /\.(mp4|webm|mov|m4v|ogv|mkv|avi|3gp)$/i.test(file.name);
+  };
+
+  var videoConverter = null;
+  var loadVideoConverter = function () {
+    if (!videoConverter) {
+      videoConverter = import(new URL(VIDEO_CONVERTER, document.baseURI).href)
+        .catch(function (error) { videoConverter = null; throw error; });
+    }
+    return videoConverter;
+  };
+
+  // Resolves to { name, blob }; never rejects: on any trouble the file is kept as it is.
+  var prepareVideo = function (file, name) {
+    var keep = { name: name, blob: file };
+    if (!window.VideoEncoder || !window.VideoDecoder) return Promise.resolve(keep);
+    status('Reading ' + file.name + '…');
+    return loadVideoConverter().then(function (mb) {
+      var input = new mb.Input({ source: new mb.BlobSource(file), formats: mb.ALL_FORMATS });
+      var finish = function (result) { if (input.dispose) input.dispose(); return result; };
+      return Promise.all([input.getPrimaryVideoTrack(), input.getPrimaryAudioTrack(), input.getFormat(), input.computeDuration()])
+        .then(function (found) {
+          var video = found[0], audio = found[1], container = found[2], duration = found[3];
+          if (!video) return keep;
+          return Promise.all([
+            video.getCodec(), audio ? audio.getCodec() : null,
+            video.getDisplayWidth(), video.getDisplayHeight(), video.computePacketStats(120)
+          ]).then(function (facts) {
+            var longest = Math.max(facts[2], facts[3]);
+            var tooBig = longest > MAX_VIDEO;
+            var tooFast = facts[4].averagePacketRate > VIDEO_FPS + 1;
+            var tooHeavy = duration > 0 && file.size * 8 / duration > (VIDEO_BITRATE + AUDIO_BITRATE) * 1.3;
+            var reencode = facts[0] !== 'avc' || tooBig || tooFast || tooHeavy;
+            var isMp4 = container instanceof mb.Mp4InputFormat && !(container instanceof mb.QuickTimeInputFormat);
+            if (!reencode && isMp4 && (!audio || facts[1] === 'aac')) return keep;
+
+            var options = { codec: 'avc' }; // nothing else: the picture is copied, not compressed again
+            if (reencode) {
+              var scale = Math.min(1, MAX_VIDEO / longest);
+              options = {
+                codec: 'avc', bitrate: VIDEO_BITRATE, fit: 'fill',
+                width: Math.max(2, Math.round(facts[2] * scale / 2) * 2), // H.264 wants even sizes
+                height: Math.max(2, Math.round(facts[3] * scale / 2) * 2)
+              };
+              if (tooFast) options.frameRate = VIDEO_FPS;
+            }
+            var output = new mb.Output({
+              format: new mb.Mp4OutputFormat({ fastStart: 'in-memory' }), // plays before it is fully downloaded
+              target: new mb.BufferTarget()
+            });
+            return mb.Conversion.init({
+              input: input, output: output, video: options,
+              audio: facts[1] === 'aac' ? { codec: 'aac' } : { codec: 'aac', bitrate: AUDIO_BITRATE }
+            }).then(function (conversion) {
+              var used = function (track) { return !track || conversion.utilizedTracks.indexOf(track) >= 0; };
+              // Never lose the picture or the sound without saying so: upload the original instead.
+              if (!conversion.isValid || !used(video) || !used(audio)) return keep;
+              conversion.onProgress = function (progress) {
+                status((reencode ? 'Converting ' : 'Repacking ') + file.name + '… ' + Math.round(progress * 100) + '%');
+              };
+              return conversion.execute().then(function () {
+                var blob = new Blob([output.target.buffer], { type: 'video/mp4' });
+                if (isMp4 && blob.size >= file.size) return keep;
+                return { name: name.replace(/\.[^.]+$/, '') + '.mp4', blob: blob };
+              });
+            });
+          });
+        }).then(finish, function (error) { finish(); throw error; });
+    }).catch(function () { return keep; });
   };
 
   var parsePost = function (raw) {
@@ -692,6 +934,8 @@
   $('cover').addEventListener('change', function () {
     var file = $('cover').files[0];
     if (!file) { state.cover = null; return; }
+    cropAll = false;
+    cropLeft = 0;
     prepare(file, 'cover.' + (extension(cleanName(file.name)) || 'jpg')).then(function (item) {
       state.cover = item;
       $('cover-note').textContent = 'New cover: ' + item.name + ', ' + Math.round(item.blob.size / 1024) + ' KB';
@@ -724,13 +968,20 @@
     var files = Array.prototype.slice.call($('media').files);
     var chain = Promise.resolve();
     var failed = [];
-    files.forEach(function (file) {
+    cropAll = false;
+    files.forEach(function (file, index) {
       chain = chain.then(function () {
-        if (file.size > MAX_FILE && !/^image\//.test(file.type)) {
-          status(file.name + ' is larger than 25 MB. Host long videos on YouTube and paste the link instead.', true);
+        cropLeft = files.length - 1 - index;
+        var video = looksLikeVideo(file);
+        if (file.size > MAX_FILE && !video && !/^image\//.test(file.type)) {
+          failed.push(file.name + ' is larger than 25 MB.');
           return;
         }
-        return prepare(file, cleanName(file.name)).then(function (item) {
+        return (video ? prepareVideo(file, cleanName(file.name)) : prepare(file, cleanName(file.name))).then(function (item) {
+          if (video && item.blob.size > MAX_FILE) {
+            throw new Error(file.name + ' is still ' + Math.round(item.blob.size / 1048576) + ' MB after conversion (25 MB at most). ' +
+              'Host long videos on YouTube and paste the link instead.');
+          }
           var taken = function (name) {
             return name === 'post.md' || name === 'post.it.md' || /^cover\./.test(name) ||
               state.media.some(function (other) { return other.name === name; }) ||

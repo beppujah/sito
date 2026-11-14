@@ -20,7 +20,7 @@ content/
     cover.jpg        cover photo
     ...              any other image, video or audio used in the text
 src/                 style.css, app.js, admin.js, sw.js (service worker)
-  vendor/            HEIC decoder used by the editor
+  vendor/            HEIC decoder and video converter used by the editor
 build.py             generator (builds into _site/)
 reactions.sql        optional shared backend for reactions
 .github/workflows/deploy.yml   builds and publishes on every push to main
@@ -108,6 +108,21 @@ in title, cover and text, add media, and press Publish.
   (heic-to, LGPL-3.0), loaded only when needed. Size, quality and default
   (`MAX_IMAGE`, `FORMATS`, `DEFAULT_FORMAT`) are at the top of `src/admin.js`.
 
+- **Crop**: each image opens on a crop screen as it is chosen. Drag the
+  corners or the area itself, pick a shape (free, 1:1, 4:5, 3:2, 16:9, 9:16),
+  then "Crop"; "Whole image" keeps it all, "Whole image for all" skips the
+  question for the rest of the files chosen together. The shapes are
+  `CROP_SHAPES` at the top of `src/admin.js`.
+- **Video** is converted before upload, with no choice to make: every video
+  becomes an MP4 (H.264 + AAC) no larger than 1280 px on its longest side, a
+  `.mov` straight from a phone included, so files over 25 MB can be chosen as
+  long as the result is under 25 MB (about 75 seconds). A video that is already
+  such an MP4 is uploaded as it is. Where the browser cannot convert (no
+  WebCodecs, or a format it cannot decode), the original is uploaded and the
+  deploy converts it as before. The converter is `src/vendor/mediabunny.min.mjs`
+  (Mediabunny, MPL-2.0), loaded only when a video is chosen. Size and quality
+  (`MAX_VIDEO`, `VIDEO_BITRATE`, `AUDIO_BITRATE`, `VIDEO_FPS`) are at the top
+  of `src/admin.js`.
 - **Hidden (draft)** saves the post without showing it on the site. Reopen it
   from the Post list, untick the box and publish when it is ready. The same
   box takes a published post offline again.

@@ -1171,7 +1171,7 @@ def build():
     write(OUT / "404.html", not_found_page(site, version))
     write(OUT / "admin" / "index.html", admin_page(site, version))
     shutil.copy2(SRC / "admin.js", OUT / "admin" / "admin.js")
-    shutil.copytree(SRC / "vendor", OUT / "admin" / "vendor")  # HEIC decoder, loaded on demand
+    shutil.copytree(SRC / "vendor", OUT / "admin" / "vendor")  # HEIC decoder and video converter, loaded on demand
 
     for post in everything:
         write(OUT / "posts" / post["slug"] / "index.html", post_page(site, post, version))
