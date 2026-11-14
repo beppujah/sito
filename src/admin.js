@@ -557,10 +557,18 @@
     return videoConverter;
   };
 
-  // Resolves to { name, blob }; never rejects: on any trouble the file is kept as it is.
+  // Resolves to { name, blob }; never rejects: on any trouble the file is kept
+  // as it is, with a note saying so.
   var prepareVideo = function (file, name) {
     var keep = { name: name, blob: file };
-    if (!window.VideoEncoder || !window.VideoDecoder) return Promise.resolve(keep);
+    var unconverted = function () {
+      return {
+        name: name, blob: file,
+        note: file.name + ' could not be converted in this browser: it is uploaded as it is' +
+          (/\.(mov|m4v)$/i.test(name) ? ' and converted when the site is published.' : '.')
+      };
+    };
+    if (!window.VideoEncoder || !window.VideoDecoder) return Promise.resolve(unconverted());
     status('Reading ' + file.name + '…');
     return loadVideoConverter().then(function (mb) {
       var input = new mb.Input({ source: new mb.BlobSource(file), formats: mb.ALL_FORMATS });
@@ -601,7 +609,7 @@
             }).then(function (conversion) {
               var used = function (track) { return !track || conversion.utilizedTracks.indexOf(track) >= 0; };
               // Never lose the picture or the sound without saying so: upload the original instead.
-              if (!conversion.isValid || !used(video) || !used(audio)) return keep;
+              if (!conversion.isValid || !used(video) || !used(audio)) return unconverted();
               conversion.onProgress = function (progress) {
                 status((reencode ? 'Converting ' : 'Repacking ') + file.name + '… ' + Math.round(progress * 100) + '%');
               };
@@ -613,7 +621,7 @@
             });
           });
         }).then(finish, function (error) { finish(); throw error; });
-    }).catch(function () { return keep; });
+    }).catch(unconverted);
   };
 
   var parsePost = function (raw) {
@@ -968,6 +976,7 @@
     var files = Array.prototype.slice.call($('media').files);
     var chain = Promise.resolve();
     var failed = [];
+    var notes = [];
     cropAll = false;
     files.forEach(function (file, index) {
       chain = chain.then(function () {
@@ -982,6 +991,8 @@
             throw new Error(file.name + ' is still ' + Math.round(item.blob.size / 1048576) + ' MB after conversion (25 MB at most). ' +
               'Host long videos on YouTube and paste the link instead.');
           }
+          if (item.note) notes.push(item.note);
+          delete item.note;
           var taken = function (name) {
             return name === 'post.md' || name === 'post.it.md' || /^cover\./.test(name) ||
               state.media.some(function (other) { return other.name === name; }) ||
@@ -1000,7 +1011,7 @@
     chain.then(function () {
       $('media').value = '';
       renderMedia();
-      status(failed.join(' '), failed.length > 0);
+      status(failed.concat(notes).join(' '), failed.length > 0);
     });
   });
 

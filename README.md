@@ -118,8 +118,8 @@ in title, cover and text, add media, and press Publish.
   `.mov` straight from a phone included, so files over 25 MB can be chosen as
   long as the result is under 25 MB (about 75 seconds). A video that is already
   such an MP4 is uploaded as it is. Where the browser cannot convert (no
-  WebCodecs, or a format it cannot decode), the original is uploaded and the
-  deploy converts it as before. The converter is `src/vendor/mediabunny.min.mjs`
+  WebCodecs, or a format it cannot decode), the original is uploaded, the
+  editor says so, and the deploy converts it as before. The converter is `src/vendor/mediabunny.min.mjs`
   (Mediabunny, MPL-2.0), loaded only when a video is chosen. Size and quality
   (`MAX_VIDEO`, `VIDEO_BITRATE`, `AUDIO_BITRATE`, `VIDEO_FPS`) are at the top
   of `src/admin.js`.
