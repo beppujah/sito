@@ -229,6 +229,34 @@
       setMode(NEXT[root.dataset.mode] || 'grid');
     });
 
+    // Video covers: in full screen the one in view plays, silent, in a loop,
+    // with no controls; the others wait. The grid only shows their poster
+    // frame (the videos are not displayed there, so they are never in view).
+    var videos = Array.prototype.slice.call(feed.querySelectorAll('.item-video'));
+    if (videos.length && 'IntersectionObserver' in window && !reduceMotion) {
+      var syncVideo = function (video) {
+        var play = video.inView && root.dataset.mode === 'full' && !document.hidden;
+        if (!play) return video.pause();
+        if (!video.getAttribute('src')) video.src = video.dataset.src; // loaded only when first needed
+        var started = video.play();
+        if (started && started.catch) started.catch(function () {}); // autoplay refused: the still image stays
+      };
+      var syncVideos = function () { videos.forEach(syncVideo); };
+      var watcher = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          entry.target.inView = entry.intersectionRatio >= 0.5;
+          syncVideo(entry.target);
+        });
+      }, { threshold: [0, 0.5, 1] });
+      videos.forEach(function (video) {
+        video.muted = true;
+        video.addEventListener('playing', function () { video.classList.add('on'); });
+        watcher.observe(video);
+      });
+      document.addEventListener('visibilitychange', syncVideos);
+      new MutationObserver(syncVideos).observe(root, { attributes: true, attributeFilter: ['data-mode'] });
+    }
+
     window.addEventListener('hashchange', function () {
       var mode = { '#grid': 'grid', '#index': 'index' }[location.hash] || 'full';
       if (mode !== root.dataset.mode) setMode(mode);

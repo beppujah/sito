@@ -558,8 +558,8 @@
   };
 
   // Resolves to { name, blob }; never rejects: on any trouble the file is kept
-  // as it is, with a note saying so.
-  var prepareVideo = function (file, name) {
+  // as it is, with a note saying so. mute: leave the sound out (video covers).
+  var prepareVideo = function (file, name, mute) {
     var keep = { name: name, blob: file };
     var unconverted = function () {
       return {
@@ -587,7 +587,7 @@
             var tooHeavy = duration > 0 && file.size * 8 / duration > (VIDEO_BITRATE + AUDIO_BITRATE) * 1.3;
             var reencode = facts[0] !== 'avc' || tooBig || tooFast || tooHeavy;
             var isMp4 = container instanceof mb.Mp4InputFormat && !(container instanceof mb.QuickTimeInputFormat);
-            if (!reencode && isMp4 && (!audio || facts[1] === 'aac')) return keep;
+            if (!reencode && isMp4 && (!audio || (facts[1] === 'aac' && !mute))) return keep;
 
             var options = { codec: 'avc' }; // nothing else: the picture is copied, not compressed again
             if (reencode) {
@@ -605,17 +605,17 @@
             });
             return mb.Conversion.init({
               input: input, output: output, video: options,
-              audio: facts[1] === 'aac' ? { codec: 'aac' } : { codec: 'aac', bitrate: AUDIO_BITRATE }
+              audio: mute ? { discard: true } : facts[1] === 'aac' ? { codec: 'aac' } : { codec: 'aac', bitrate: AUDIO_BITRATE }
             }).then(function (conversion) {
               var used = function (track) { return !track || conversion.utilizedTracks.indexOf(track) >= 0; };
               // Never lose the picture or the sound without saying so: upload the original instead.
-              if (!conversion.isValid || !used(video) || !used(audio)) return unconverted();
+              if (!conversion.isValid || !used(video) || !(mute || used(audio))) return unconverted();
               conversion.onProgress = function (progress) {
                 status((reencode ? 'Converting ' : 'Repacking ') + file.name + '… ' + Math.round(progress * 100) + '%');
               };
               return conversion.execute().then(function () {
                 var blob = new Blob([output.target.buffer], { type: 'video/mp4' });
-                if (isMp4 && blob.size >= file.size) return keep;
+                if (isMp4 && !mute && blob.size >= file.size) return keep;
                 return { name: name.replace(/\.[^.]+$/, '') + '.mp4', blob: blob };
               });
             });
@@ -843,7 +843,8 @@
     var key = state.flags.background;
     $('bg-note').textContent = image
       ? (key && key !== '@cover' ? 'Image: ' + key + '.'
-        : coverName() ? 'Image: ' + coverName() + ' (the cover). Pick another with "bg" in the list above.'
+        : coverName() ? 'Image: ' + (isVideo(coverName()) ? 'a still frame of the cover video' : coverName() + ' (the cover)') +
+          '. Pick another with "bg" in the list above.'
         : 'Pick the image with "bg" in the list above.')
       : '';
   };
@@ -944,10 +945,20 @@
     if (!file) { state.cover = null; return; }
     cropAll = false;
     cropLeft = 0;
-    prepare(file, 'cover.' + (extension(cleanName(file.name)) || 'jpg')).then(function (item) {
+    // A short video can be the cover: its first moments are the still image
+    // of the grid, and it plays in a loop, without sound, in full screen.
+    var video = looksLikeVideo(file);
+    var name = 'cover.' + (extension(cleanName(file.name)) || (video ? 'mp4' : 'jpg'));
+    (video ? prepareVideo(file, name, true) : prepare(file, name)).then(function (item) {
+      if (video && item.blob.size > MAX_FILE) {
+        throw new Error(file.name + ' is ' + Math.round(item.blob.size / 1048576) + ' MB after conversion (25 MB at most): choose a shorter video.');
+      }
+      var note = item.note || '';
+      delete item.note;
       state.cover = item;
-      $('cover-note').textContent = 'New cover: ' + item.name + ', ' + Math.round(item.blob.size / 1024) + ' KB';
-      status('');
+      $('cover-note').textContent = 'New cover: ' + item.name + ', ' + Math.round(item.blob.size / 1024) + ' KB' +
+        (video ? '. In the grid: a still frame. In full screen: the video in a loop, without sound.' : '');
+      status(note);
       renderMedia();
       showBackground();
     }).catch(function (error) {
@@ -1625,7 +1636,7 @@
       about && /^(faded|bw|difference)$/.test($('bg-style').value) && !state.flags.background
         ? 'Pick the background image with "bg" in the media list.' :
       !slug ? 'The post needs an address.' :
-      !state.editing && !state.cover ? 'Choose a cover image.' :
+      !state.editing && !state.cover ? 'Choose a cover image or video.' :
       !state.editing && state.posts.some(function (p) { return p.slug === slug; })
         ? 'A post with this address already exists. Pick it from the Post list to edit it.' : '';
     if (problem) {

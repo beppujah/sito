@@ -17,7 +17,7 @@ content/
   about/             the about page: post.md (title, text, looks) and its media
   posts/<name>/      one folder per post
     post.md          title, date, cover + text
-    cover.jpg        cover photo
+    cover.jpg        cover photo (or cover.mp4, a short video)
     ...              any other image, video or audio used in the text
 src/                 style.css, app.js, admin.js, sw.js (service worker)
   vendor/            HEIC decoder and video converter used by the editor
@@ -108,6 +108,12 @@ in title, cover and text, add media, and press Publish.
   (heic-to, LGPL-3.0), loaded only when needed. Size, quality and default
   (`MAX_IMAGE`, `FORMATS`, `DEFAULT_FORMAT`) are at the top of `src/admin.js`.
 
+- **Cover**: an image, or a short video. A video cover plays in full screen
+  on the home page, in a loop, without sound or controls, only while it is in
+  view; the grid, the feed and link previews show a still frame taken from its
+  start (made at each deploy). It is converted like any other video, and its
+  sound is left out. Visitors who ask their device for reduced motion see the
+  still frame only.
 - **Crop**: each image opens on a crop screen as it is chosen. Drag the
   corners or the area itself, pick a shape (free, 1:1, 4:5, 3:2, 16:9, 9:16),
   then "Crop"; "Whole image" keeps it all, "Whole image for all" skips the

@@ -328,6 +328,13 @@ def publish_files(folder, target):
             VARIANTS[item] = make_variants(item, target)
 
 
+def still_of(folder, name):
+    """The image that stands for a file: itself, or the poster frame of a video ("" without one)."""
+    if Path(name).suffix.lower() not in VIDEO_EXT:
+        return name
+    return (VIDEOS.get(folder / name) or {}).get("poster") or ""
+
+
 SIZES_MEDIA = "(min-width: 768px) 46rem, 100vw"
 
 
@@ -651,7 +658,7 @@ def load_posts():
             found = sorted(f.name for f in folder.glob("cover.*"))
             cover = found[0] if found else ""
         if not cover or not (folder / cover).exists():
-            warn(f"{folder.name}: cover image missing, skipped")
+            warn(f"{folder.name}: cover missing, skipped")
             continue
         looks = page_looks(folder, meta, cover)
         try:
@@ -749,10 +756,27 @@ def home_page(site, posts, version):
             return (f'<div class="item-reactions" data-post="{esc(p["slug"])}" role="group" '
                     f'aria-label="Reactions to {esc(p["title"])}">{buttons}</div>'
                     '<span class="item-top" aria-hidden="true"></span>')
+        def cover(p, index):
+            prefix = f'posts/{quote(p["slug"])}/'
+            video = VIDEOS.get(p["folder"] / p["cover"])
+            if not video:
+                return img_tag(p["cover"], p["title"], p["folder"], lazy=index > 0, sizes=SIZES_FULL, prefix=prefix)
+            # A video cover: its poster frame is the picture (the only thing shown in
+            # the grid); in full screen app.js plays the video over it, silent, in a loop.
+            source = esc(prefix + quote(video["file"]))
+            common = 'muted loop playsinline disableremoteplayback tabindex="-1" aria-hidden="true"'
+            if not video["poster"]:  # no ffmpeg, no poster: the video itself is the picture
+                return f'<video class="item-video still" src="{source}" preload="metadata" {common}></video>'
+            size = ""
+            if video["size"]:
+                width, height = video["size"]
+                size = f' width="{width}" height="{height}" style="--ratio:{width / height:.4f}"'
+            lazy = ' loading="lazy"' if index > 0 else ""
+            return (f'<img src="{esc(prefix + quote(video["poster"]))}" alt="{esc(p["title"])}"{size}{lazy} decoding="async">'
+                    f'<video class="item-video" data-src="{source}" preload="none" {common}></video>')
         items = "\n".join(
             f'<div class="item"><a class="item-link" href="posts/{quote(p["slug"])}/">'
-            + img_tag(p["cover"], p["title"], p["folder"], lazy=index > 0, sizes=SIZES_FULL,
-                      prefix=f'posts/{quote(p["slug"])}/')
+            + cover(p, index)
             + f'<span class="item-title" aria-hidden="true">{esc(p["title"])}</span></a>{overlay(p)}</div>'
             for index, p in enumerate(posts)
         )
@@ -780,7 +804,8 @@ def home_page(site, posts, version):
     background, ink = home_colors(site)
     if (background, ink) != ("#000000", "#ffffff"):  # the defaults are in style.css
         head += f"<style>:root{{--home-bg:{background};--home-ink:{ink}}}</style>\n"
-    image = f'posts/{quote(posts[0]["slug"])}/{quote(posts[0]["cover"])}' if posts else ""
+    image = still_of(posts[0]["folder"], posts[0]["cover"]) if posts else ""
+    image = f'posts/{quote(posts[0]["slug"])}/{quote(image)}' if image else ""
     foot = reactions_config(site) if with_reactions else ""
     return page(site, title="", description=site["description"], root="", body=body,
                 body_class="home", version=version, image=image, head=head, foot=foot, view="@home")
@@ -820,6 +845,8 @@ def apply_looks(item, version, root):
         head += f'<link rel="stylesheet" href="{root}assets/fonts/fonts.css?v={version}">\n'
     intro = ""
     background = item["background"]
+    if background and not HEX_COLOR.match(background):
+        background = still_of(folder, background)  # a video cover: its poster frame
     text_color = item["text_color"]
     if background and HEX_COLOR.match(background):
         # Solid colour.
@@ -841,8 +868,8 @@ def apply_looks(item, version, root):
 
 def post_page(site, post, version, lang="en"):
     date = post["date"]
-    cover = quote(post["cover"])
     folder = post["folder"]
+    cover = quote(still_of(folder, post["cover"]))
     it = post["it"] if lang == "it" else None
     title = (it and it["title"]) or post["title"]
     text = it["body"] if it else post["body"]
@@ -865,7 +892,7 @@ def post_page(site, post, version, lang="en"):
     return page(site, title=title, description=it["description"] if it else post["description"], root="../../",
                 body=body, body_class=body_class, version=version,
                 path=f"posts/{slug}/" + ("it/" if lang == "it" else ""),
-                image=f"posts/{slug}/{cover}", head=head, foot=foot, body_style=";".join(style),
+                image=f"posts/{slug}/{cover}" if cover else "", head=head, foot=foot, body_style=";".join(style),
                 robots="noindex" if post["hidden"] else "", lang=lang, base="../" if lang == "it" else "",
                 view=post["slug"])
 
@@ -956,7 +983,7 @@ def admin_page(site, version):
 </select></label>
 <p class="hint" id="format-note"></p>
 <div class="not-about">
-<label>Cover image (home page)<input id="cover" type="file" accept="image/*,.heic,.heif"></label>
+<label>Cover image or short video (home page)<input id="cover" type="file" accept="image/*,.heic,.heif,video/*"></label>
 <p class="hint" id="cover-note"></p>
 </div>
 </div>
@@ -1058,8 +1085,9 @@ def feed_xml(site, posts):
     for p in posts[:30]:
         link = f'{base}/posts/{quote(p["slug"])}/'
         when = datetime.datetime.combine(p["date"], datetime.time(12), datetime.timezone.utc)
-        cover = f'{base}/posts/{quote(p["slug"])}/{quote(p["cover"])}'
-        summary = esc(f'<p><img src="{cover}" alt=""></p><p>{esc(p["description"])}</p>')
+        cover = still_of(p["folder"], p["cover"])
+        picture = f'<p><img src="{base}/posts/{quote(p["slug"])}/{quote(cover)}" alt=""></p>' if cover else ""
+        summary = esc(f'{picture}<p>{esc(p["description"])}</p>')
         items.append(f"""<item>
 <title>{esc(p["title"])}</title>
 <link>{link}</link>

@@ -240,6 +240,22 @@ html[data-mode="index"] .index {
 .index time { flex: none; color: color-mix(in srgb, var(--home-ink) 60%, transparent); font-size: 0.8rem; font-variant-numeric: tabular-nums; }
 @media (hover: hover) { .index a:hover span { text-decoration: underline; text-underline-offset: 0.2em; } }
 .item img { width: 100%; height: 100%; object-fit: cover; }
+/* A video cover: the poster frame is the picture; in full screen the video
+   plays over it (app.js), and fades in once it is running. */
+.item-video {
+  position: absolute;
+  inset: 0;
+  display: none;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+html[data-mode="full"] .item-video { display: block; }
+.item-video.on { opacity: 1; }
+.item-video.still { display: block; opacity: 1; } /* built without a poster frame */
 
 html[data-mode="full"] .item {
   height: var(--screen);
